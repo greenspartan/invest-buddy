@@ -1,0 +1,8 @@
+fastapi>=0.115.6
+uvicorn>=0.34.0
+yfinance>=0.2.51
+pyyaml>=6.0.2
+sqlalchemy>=2.0.36
+psycopg2-binary>=2.9.10
+streamlit>=1.41.1
+requests>=2.32.3

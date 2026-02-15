@@ -1,0 +1,25 @@
+positions:
+  - ticker: "IWDA.AS"       # iShares Core MSCI World (Euronext)
+    qty: 50
+    avg_price: 82.50
+    account: "PEA"
+
+  - ticker: "EIMI.MI"       # iShares Core MSCI EM IMI (Milan)
+    qty: 100
+    avg_price: 30.20
+    account: "PEA"
+
+  - ticker: "VWCE.DE"       # Vanguard FTSE All-World (Xetra)
+    qty: 30
+    avg_price: 105.00
+    account: "CTO"
+
+  - ticker: "PANX.PA"       # Amundi Nasdaq-100 (Euronext Paris)
+    qty: 40
+    avg_price: 55.80
+    account: "CTO"
+
+  - ticker: "ESE.PA"        # BNP Paribas Easy S&P 500 (Euronext Paris)
+    qty: 80
+    avg_price: 22.10
+    account: "PEA"
