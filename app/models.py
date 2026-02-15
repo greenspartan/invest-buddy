@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -20,4 +20,5 @@ class Position(Base):
     pnl = Column(Float)
     pnl_eur = Column(Float)
     pnl_pct = Column(Float)
+    purchase_date = Column(String)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
