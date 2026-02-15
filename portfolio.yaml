@@ -4,45 +4,53 @@ positions:
     avg_price: 98.75
     currency: "EUR"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "DFNS.MI"
     qty: 15
     avg_price: 68.35
     currency: "EUR"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "WDEF.L"
     qty: 16
     avg_price: 32.59
     currency: "USD"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "USPY.L"
     qty: 14
     avg_price: 29.46
     currency: "USD"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "SMH.L"
     qty: 13
     avg_price: 72.68
     currency: "USD"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "EIMI.L"
     qty: 10
     avg_price: 50.42
     currency: "USD"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "XAID.L"
     qty: 3
     avg_price: 181.23
     currency: "USD"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"
 
   - ticker: "URNU.L"
     qty: 12
     avg_price: 32.85
     currency: "USD"
     account: "CTO IBKR"
+    purchase_date: "2026-02-11"

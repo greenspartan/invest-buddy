@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import init_db, get_db
 from app.holdings import compute_top_holdings
+from app.performance import compute_performance, PERIODS
 from app.sectors import compute_sector_exposure
 from app.models import Position
 from app.portfolio import load_portfolio, enrich_positions
@@ -105,14 +106,48 @@ def get_sectors():
 
     return {
         "sectors": [
-            {"name": sector, "weight_pct": round(weight * 100, 2)}
-            for sector, weight in result.sectors.items()
+            {
+                "name": s.name,
+                "weight_pct": round(s.effective_weight * 100, 2),
+                "etf_sources": s.etf_sources,
+            }
+            for s in result.sectors
         ],
         "meta": {
             "etfs_analyzed": result.etfs_analyzed,
             "etfs_no_data": result.etfs_no_data,
             "portfolio_coverage_pct": round(result.portfolio_coverage * 100, 2),
         },
+    }
+
+
+@app.get("/performance")
+def get_performance(period: str = "ALL"):
+    """Historical portfolio performance (P&L % and drawdown over time)."""
+    if period not in PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIODS))}",
+        )
+    positions = load_portfolio()
+    result = compute_performance(positions, period=period)
+
+    return {
+        "period": result.period,
+        "start_date": result.start_date,
+        "end_date": result.end_date,
+        "data_points": len(result.daily),
+        "daily": [
+            {
+                "date": d.date,
+                "portfolio_value_eur": d.portfolio_value_eur,
+                "cost_basis_eur": d.cost_basis_eur,
+                "pnl_eur": d.pnl_eur,
+                "pnl_pct": d.pnl_pct,
+                "drawdown_pct": d.drawdown_pct,
+            }
+            for d in result.daily
+        ],
     }
 
 

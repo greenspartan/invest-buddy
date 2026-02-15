@@ -54,6 +54,12 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
    - Il calcule le poids effectif de chaque secteur : poids du secteur dans l'ETF x poids de l'ETF dans le portefeuille
    - Il agrege les secteurs communs a plusieurs ETFs
    - Streamlit affiche le resultat sous forme de camembert (pie chart)
+6. Quand tu (ou Streamlit) appelles `GET /performance?period=ALL` :
+   - Pour chaque ETF, il recupere les prix historiques quotidiens via yfinance
+   - Il recupere les taux de change historiques pour les positions en devise etrangere
+   - Il calcule la valeur quotidienne du portefeuille en EUR depuis la date d'achat
+   - Il calcule le P&L % et le drawdown maximum par rapport au pic
+   - Streamlit affiche deux graphiques : courbe P&L % et drawdown
 
 ---
 
@@ -62,11 +68,12 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 ```
 .
 ├── app/
-│   ├── main.py            # API FastAPI (endpoints /portfolio, /holdings/top, /sectors, /health)
+│   ├── main.py            # API FastAPI (endpoints /portfolio, /holdings/top, /sectors, /performance, /health)
 │   ├── streamlit_app.py   # Dashboard web Streamlit
 │   ├── portfolio.py       # Chargement YAML + appel Yahoo Finance + calcul P&L
 │   ├── holdings.py        # Fetch des top holdings ETF + calcul des poids effectifs
 │   ├── sectors.py         # Fetch des secteurs ETF + calcul de l'exposition sectorielle
+│   ├── performance.py    # Historique de performance du portefeuille (P&L, drawdown)
 │   ├── forex.py           # Taux de change via yfinance (cache en memoire)
 │   ├── models.py          # Modele de la table "positions" en base (SQLAlchemy ORM)
 │   ├── database.py        # Connexion a PostgreSQL
@@ -118,6 +125,7 @@ positions:
     avg_price: 82.50         # Prix d'achat moyen
     currency: "EUR"          # Devise de cotation (EUR, USD, GBP...)
     account: "PEA"           # Compte (PEA, CTO, etc.)
+    purchase_date: "2025-06-15"  # Date d'achat (pour le graphique de performance)
 ```
 
 > Les positions en devise etrangere sont automatiquement converties en EUR (devise de base) pour les totaux et le P&L. Les taux de change sont recuperes en temps reel via Yahoo Finance.
@@ -139,6 +147,7 @@ URLs disponibles :
 - **http://127.0.0.1:8000/portfolio** — Donnees JSON du portefeuille
 - **http://127.0.0.1:8000/holdings/top** — Top 20 positions sous-jacentes
 - **http://127.0.0.1:8000/sectors** — Exposition sectorielle du portefeuille
+- **http://127.0.0.1:8000/performance?period=ALL** — Performance historique du portefeuille
 - **http://127.0.0.1:8000/docs** — Documentation interactive Swagger UI
 - **http://127.0.0.1:8000/redoc** — Documentation alternative (ReDoc)
 
@@ -160,6 +169,7 @@ streamlit run app/streamlit_app.py
 | GET | `/portfolio` | Retourne les positions enrichies avec prix live, P&L et totaux |
 | GET | `/holdings/top` | Top 20 positions sous-jacentes du portefeuille (poids effectifs agreges) |
 | GET | `/sectors` | Exposition sectorielle du portefeuille (poids effectifs agreges par secteur GICS) |
+| GET | `/performance?period=ALL` | Performance historique du portefeuille (P&L % et drawdown). Periodes : 1M, 3M, 6M, 1Y, YTD, ALL |
 | GET | `/health` | Health check (`{"status": "ok"}`) |
 | GET | `/docs` | Documentation Swagger UI (interface de test) |
 | GET | `/redoc` | Documentation ReDoc (lecture seule) |
@@ -231,6 +241,29 @@ streamlit run app/streamlit_app.py
 }
 ```
 
+### Exemple de reponse `/performance`
+
+```json
+{
+  "period": "ALL",
+  "start_date": "2026-02-11",
+  "end_date": "2026-02-15",
+  "data_points": 4,
+  "daily": [
+    {
+      "date": "2026-02-11",
+      "portfolio_value_eur": 4317.01,
+      "cost_basis_eur": 4317.01,
+      "pnl_eur": 0.0,
+      "pnl_pct": 0.0,
+      "drawdown_pct": 0.0
+    }
+  ]
+}
+```
+
+> **Periodes disponibles** : `1M` (1 mois), `3M`, `6M`, `1Y` (1 an), `YTD` (depuis janvier), `ALL` (depuis la date d'achat la plus ancienne).
+
 ---
 
 ## Commandes utiles
@@ -250,6 +283,6 @@ streamlit run app/streamlit_app.py
 
 - [ ] Integration IBKR (positions temps reel depuis le broker)
 - [ ] Frontend web (SvelteKit ou React) en remplacement de Streamlit
-- [ ] Historique de performance (suivi de la valeur dans le temps)
+- [x] Historique de performance (suivi de la valeur dans le temps)
 - [ ] Alertes de prix (notification si un ETF passe un seuil)
 - [x] Graphique d'exposition sectorielle (camembert)

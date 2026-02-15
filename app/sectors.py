@@ -41,10 +41,19 @@ def _normalize_sector(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class SectorWeight:
+    """A single sector with its effective weight and contributing ETFs."""
+
+    name: str
+    effective_weight: float  # fraction, e.g. 0.25 = 25 %
+    etf_sources: list[str] = field(default_factory=list)
+
+
+@dataclass
 class SectorExposureResult:
     """Aggregated sector exposure across the whole portfolio."""
 
-    sectors: dict[str, float]  # sector_name -> effective weight (fraction)
+    sectors: list[SectorWeight]
     etfs_analyzed: list[str] = field(default_factory=list)
     etfs_no_data: list[str] = field(default_factory=list)
     portfolio_coverage: float = 0.0  # fraction of portfolio MV covered
@@ -102,9 +111,9 @@ def compute_sector_exposure(
     total_mv = sum(p["market_value_eur"] for p in valid)
 
     if total_mv == 0:
-        return SectorExposureResult({})
+        return SectorExposureResult([])
 
-    aggregated: dict[str, float] = {}
+    aggregated: dict[str, dict] = {}
     etfs_analyzed: list[str] = []
     etfs_no_data: list[str] = []
     covered_mv = 0.0
@@ -123,14 +132,25 @@ def compute_sector_exposure(
 
         for sector, weight in sectors.items():
             label = _normalize_sector(sector)
-            aggregated[label] = aggregated.get(label, 0.0) + weight * etf_weight
+            if label not in aggregated:
+                aggregated[label] = {"weight": 0.0, "etf_sources": []}
+            aggregated[label]["weight"] += weight * etf_weight
+            if ticker not in aggregated[label]["etf_sources"]:
+                aggregated[label]["etf_sources"].append(ticker)
 
-    sorted_sectors = dict(
-        sorted(aggregated.items(), key=lambda item: item[1], reverse=True)
+    sorted_items = sorted(
+        aggregated.items(), key=lambda item: item[1]["weight"], reverse=True
     )
 
     return SectorExposureResult(
-        sectors={k: round(v, 6) for k, v in sorted_sectors.items()},
+        sectors=[
+            SectorWeight(
+                name=name,
+                effective_weight=round(data["weight"], 6),
+                etf_sources=data["etf_sources"],
+            )
+            for name, data in sorted_items
+        ],
         etfs_analyzed=etfs_analyzed,
         etfs_no_data=etfs_no_data,
         portfolio_coverage=round(covered_mv / total_mv, 4) if total_mv else 0.0,

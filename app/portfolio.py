@@ -67,6 +67,7 @@ def enrich_positions(positions: list[dict]) -> list[dict]:
             "pnl_eur": pnl_eur,
             "pnl_pct": pnl_pct,
             "account": pos["account"],
+            "purchase_date": pos.get("purchase_date"),
         })
 
     return enriched
