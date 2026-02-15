@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 API_URL = "http://localhost:8000/portfolio"
 HOLDINGS_URL = "http://localhost:8000/holdings/top"
@@ -227,29 +228,36 @@ with tab_performance:
             f"({perf_data['data_points']} jours de bourse)"
         )
 
-        # --- P&L % chart ---
+        # --- P&L % chart (green positive, red negative) ---
         st.subheader("P&L (%)")
-        fig_pnl = px.line(
-            df_perf,
-            x="date",
-            y="pnl_pct",
-            labels={"date": "Date", "pnl_pct": "P&L (%)"},
-        )
+        fig_pnl = go.Figure()
+        fig_pnl.add_trace(go.Scatter(
+            x=df_perf["date"], y=df_perf["pnl_pct"].clip(lower=0),
+            fill="tozeroy", fillcolor="rgba(46, 204, 113, 0.15)",
+            line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        fig_pnl.add_trace(go.Scatter(
+            x=df_perf["date"], y=df_perf["pnl_pct"].clip(upper=0),
+            fill="tozeroy", fillcolor="rgba(231, 76, 60, 0.15)",
+            line=dict(width=0), showlegend=False, hoverinfo="skip",
+        ))
+        fig_pnl.add_trace(go.Scatter(
+            x=df_perf["date"], y=df_perf["pnl_pct"],
+            line=dict(color="white", width=1.5),
+            name="P&L (%)", showlegend=False,
+        ))
         fig_pnl.add_hline(y=0, line_dash="dash", line_color="grey", opacity=0.5)
-        fig_pnl.update_traces(
-            line_color="#2ecc71",
-            fill="tozeroy",
-            fillcolor="rgba(46, 204, 113, 0.1)",
-        )
         fig_pnl.update_layout(
             height=400,
             hovermode="x unified",
             yaxis_ticksuffix="%",
+            yaxis_title="P&L (%)",
+            xaxis_title="Date",
             margin=dict(t=20, b=40, l=60, r=20),
         )
         st.plotly_chart(fig_pnl, use_container_width=True)
 
-        # --- Max Drawdown chart ---
+        # --- Max Drawdown chart (blue) ---
         st.subheader("Max Drawdown (%)")
         fig_dd = px.area(
             df_perf,
@@ -258,8 +266,8 @@ with tab_performance:
             labels={"date": "Date", "drawdown_pct": "Drawdown (%)"},
         )
         fig_dd.update_traces(
-            line_color="#e74c3c",
-            fillcolor="rgba(231, 76, 60, 0.15)",
+            line_color="#3498db",
+            fillcolor="rgba(52, 152, 219, 0.15)",
         )
         fig_dd.update_layout(
             height=350,
