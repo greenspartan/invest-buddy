@@ -1,0 +1,19 @@
+# Achats additionnels. Chaque transaction est un lot independant.
+# Le PRU et la quantite totale sont recalcules automatiquement.
+# Les champs ticker et account doivent correspondre a une position existante
+# dans portfolio.yaml, OU definir une nouvelle position (currency obligatoire).
+#
+# Format :
+#   - ticker: "IMAE.AS"
+#     account: "CTO IBKR"
+#     qty: 3
+#     price: 101.50
+#     date: "2026-03-15"
+#     currency: "EUR"       # optionnel si le ticker existe deja dans portfolio.yaml
+transactions: [
+  # - ticker: "IMAE.AS"
+  #   account: "CTO IBKR"
+  #   qty: 3
+  #   price: 101.50
+  #   date: "2026-03-15"
+]

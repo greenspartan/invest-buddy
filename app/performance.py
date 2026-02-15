@@ -151,6 +151,65 @@ def _get_fx_rate_on_date(
 # Main computation
 # ---------------------------------------------------------------------------
 
+@dataclass
+class _Lot:
+    """Internal representation of a single buy lot."""
+
+    ticker: str
+    qty: float
+    price: float
+    date: datetime.date
+    currency: str
+    cost_basis_eur: float = 0.0  # pre-computed
+
+
+def _build_lots(positions: list[dict], today: datetime.date) -> list[_Lot]:
+    """Convert aggregated positions (with _lots) into flat list of _Lot objects.
+
+    If a position has no ``_lots`` key (backwards compatibility), a single
+    lot is created from the position itself.
+    """
+    lots: list[_Lot] = []
+    for pos in positions:
+        ticker = pos["ticker"]
+        currency = pos.get("currency", BASE_CURRENCY)
+        raw_lots = pos.get("_lots")
+
+        if raw_lots:
+            for rl in raw_lots:
+                date_val = rl.get("date")
+                if isinstance(date_val, str):
+                    lot_date = datetime.date.fromisoformat(date_val)
+                elif isinstance(date_val, datetime.date):
+                    lot_date = date_val
+                else:
+                    lot_date = today
+                lots.append(_Lot(
+                    ticker=ticker,
+                    qty=rl["qty"],
+                    price=rl["price"],
+                    date=lot_date,
+                    currency=currency,
+                ))
+        else:
+            pd_str = pos.get("purchase_date")
+            if isinstance(pd_str, str):
+                lot_date = datetime.date.fromisoformat(pd_str)
+            elif isinstance(pd_str, datetime.date):
+                lot_date = pd_str
+            else:
+                lot_date = today
+            lots.append(_Lot(
+                ticker=ticker,
+                qty=pos["qty"],
+                price=pos["avg_price"],
+                date=lot_date,
+                currency=currency,
+            ))
+
+    return lots
+
+
 def compute_performance(
     positions: list[dict],
     period: str = "ALL",
@@ -160,8 +219,9 @@ def compute_performance(
     Parameters
     ----------
     positions:
-        Raw position dicts from portfolio.yaml. Must contain:
-        ``ticker``, ``qty``, ``avg_price``, ``currency``, ``purchase_date``.
+        Aggregated position dicts (from ``aggregate_positions``).
+        Each may contain ``_lots`` (list of individual buys).
+        Falls back to a single lot per position if ``_lots`` is absent.
     period:
         One of "1M", "3M", "6M", "1Y", "YTD", "ALL".
 
@@ -172,41 +232,31 @@ def compute_performance(
     """
     today = datetime.date.today()
 
-    # Parse purchase dates
-    for pos in positions:
-        pd_str = pos.get("purchase_date")
-        if isinstance(pd_str, str):
-            pos["_purchase_date"] = datetime.date.fromisoformat(pd_str)
-        elif isinstance(pd_str, datetime.date):
-            pos["_purchase_date"] = pd_str
-        else:
-            pos["_purchase_date"] = today
+    # Build flat list of lots
+    lots = _build_lots(positions, today)
+    if not lots:
+        return PerformanceResult(period=period)
 
-    earliest = min(p["_purchase_date"] for p in positions)
+    earliest = min(l.date for l in lots)
     start = _resolve_start_date(period, earliest, today)
     end = today
 
-    # --- Fixed cost basis in EUR for each position ---
-    cost_bases_eur: dict[str, float] = {}
-    for pos in positions:
-        currency = pos.get("currency", BASE_CURRENCY)
-        fx_at_purchase = _get_fx_rate_on_date(
-            currency, BASE_CURRENCY, pos["_purchase_date"]
-        )
-        cost_bases_eur[pos["ticker"]] = pos["qty"] * pos["avg_price"] * fx_at_purchase
+    # --- Pre-compute cost basis EUR for each lot ---
+    for lot in lots:
+        fx_at_purchase = _get_fx_rate_on_date(lot.currency, BASE_CURRENCY, lot.date)
+        lot.cost_basis_eur = lot.qty * lot.price * fx_at_purchase
 
-    # --- Fetch historical price series for each ticker ---
+    # --- Fetch historical price series for each unique ticker ---
+    tickers = {lot.ticker for lot in lots}
     price_series: dict[str, pd.Series] = {}
-    for pos in positions:
-        price_series[pos["ticker"]] = _fetch_historical_prices(
-            pos["ticker"], start, end
-        )
+    for ticker in tickers:
+        price_series[ticker] = _fetch_historical_prices(ticker, start, end)
 
     # --- Fetch historical FX rates for non-EUR currencies ---
     currencies_needed = {
-        pos.get("currency", BASE_CURRENCY).upper()
-        for pos in positions
-        if pos.get("currency", BASE_CURRENCY).upper() != BASE_CURRENCY.upper()
+        lot.currency.upper()
+        for lot in lots
+        if lot.currency.upper() != BASE_CURRENCY.upper()
     }
     fx_series: dict[str, pd.Series] = {}
     for ccy in currencies_needed:
@@ -233,15 +283,15 @@ def compute_performance(
         portfolio_value = 0.0
         total_cost = 0.0
 
-        for pos in positions:
-            if date < pos["_purchase_date"]:
+        for lot in lots:
+            # Only include lots that are active on this date
+            if date < lot.date:
                 continue
 
-            ticker = pos["ticker"]
-            currency = pos.get("currency", BASE_CURRENCY).upper()
+            currency = lot.currency.upper()
 
             # Get price (forward-fill from last available)
-            prices = price_series.get(ticker, pd.Series(dtype=float))
+            prices = price_series.get(lot.ticker, pd.Series(dtype=float))
             available = prices[prices.index <= date]
             if available.empty:
                 continue
@@ -257,8 +307,8 @@ def compute_performance(
                     continue
                 fx_rate = float(fx_available.iloc[-1])
 
-            portfolio_value += pos["qty"] * close_price * fx_rate
-            total_cost += cost_bases_eur[ticker]
+            portfolio_value += lot.qty * close_price * fx_rate
+            total_cost += lot.cost_basis_eur
 
         if total_cost == 0:
             continue

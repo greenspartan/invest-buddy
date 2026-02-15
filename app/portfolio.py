@@ -1,7 +1,9 @@
+import os
+
 import yaml
 import yfinance as yf
 
-from app.config import BASE_CURRENCY, PORTFOLIO_PATH
+from app.config import BASE_CURRENCY, PORTFOLIO_PATH, TRANSACTIONS_PATH
 from app.forex import convert
 
 
@@ -9,6 +11,86 @@ def load_portfolio() -> list[dict]:
     with open(PORTFOLIO_PATH, "r") as f:
         data = yaml.safe_load(f)
     return data.get("positions", [])
+
+
+def load_transactions() -> list[dict]:
+    """Load additional buy transactions from transactions.yaml."""
+    if not os.path.exists(TRANSACTIONS_PATH):
+        return []
+    with open(TRANSACTIONS_PATH, "r") as f:
+        data = yaml.safe_load(f) or {}
+    return data.get("transactions", []) or []
+
+
+def aggregate_positions(
+    positions: list[dict], transactions: list[dict]
+) -> list[dict]:
+    """Merge initial positions with transactions to compute current state.
+
+    Each position and transaction becomes a "lot". Lots are grouped by
+    (ticker, account) to produce aggregated positions with:
+    - qty: total quantity across all lots
+    - avg_price: weighted average price (PRU)
+    - purchase_date: earliest lot date
+    - _lots: list of individual lots (used by performance.py)
+    """
+    by_key: dict[tuple, dict] = {}
+
+    # Initial positions → lots
+    for pos in positions:
+        key = (pos["ticker"], pos["account"])
+        lot = {
+            "qty": pos["qty"],
+            "price": pos["avg_price"],
+            "date": pos.get("purchase_date"),
+        }
+        if key not in by_key:
+            by_key[key] = {
+                "ticker": pos["ticker"],
+                "account": pos["account"],
+                "currency": pos.get("currency", BASE_CURRENCY),
+                "lots": [],
+            }
+        by_key[key]["lots"].append(lot)
+
+    # Transactions → lots
+    for tx in transactions:
+        key = (tx["ticker"], tx["account"])
+        lot = {
+            "qty": tx["qty"],
+            "price": tx["price"],
+            "date": tx.get("date"),
+        }
+        if key not in by_key:
+            by_key[key] = {
+                "ticker": tx["ticker"],
+                "account": tx["account"],
+                "currency": tx.get("currency", BASE_CURRENCY),
+                "lots": [],
+            }
+        by_key[key]["lots"].append(lot)
+
+    # Aggregate each group
+    result = []
+    for data in by_key.values():
+        lots = data["lots"]
+        total_qty = sum(l["qty"] for l in lots)
+        total_cost = sum(l["qty"] * l["price"] for l in lots)
+        avg_price = total_cost / total_qty if total_qty > 0 else 0.0
+        dates = [l["date"] for l in lots if l["date"]]
+        earliest_date = min(dates) if dates else None
+
+        result.append({
+            "ticker": data["ticker"],
+            "qty": total_qty,
+            "avg_price": round(avg_price, 4),
+            "currency": data["currency"],
+            "account": data["account"],
+            "purchase_date": earliest_date,
+            "_lots": lots,
+        })
+
+    return result
 
 
 def fetch_current_prices(tickers: list[str]) -> dict[str, float | None]:

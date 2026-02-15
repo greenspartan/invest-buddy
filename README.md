@@ -9,10 +9,12 @@ Assistant personnel d'investissement — suivi de portefeuille (ETFs, actions), 
 L'application est composee de **4 briques** qui communiquent entre elles :
 
 ```
-portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d'achat)
+portfolio.yaml          Tu definis tes positions initiales ici (tickers, quantites, prix d'achat)
+transactions.yaml       Tu ajoutes tes achats ulterieurs ici (optionnel)
        |
        v
-  FastAPI (backend)     Lit le YAML, recupere les prix live via Yahoo Finance,
+  FastAPI (backend)     Lit les 2 YAML, agrege les lots, calcule le PRU,
+       |                recupere les prix live via Yahoo Finance,
        |                calcule les P&L, stocke en base de donnees
        |
        v
@@ -26,7 +28,8 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 
 | Brique | C'est quoi ? | Role dans le projet |
 |--------|-------------|-------------------|
-| **portfolio.yaml** | Un simple fichier texte structuree | Ta "source de verite" : tu y mets tes ETFs, quantites et prix d'achat |
+| **portfolio.yaml** | Un simple fichier texte structure | Ta "photo initiale" : tu y mets tes ETFs, quantites et prix d'achat |
+| **transactions.yaml** | Un fichier texte structure (optionnel) | Tes achats ulterieurs : chaque achat est un "lot" avec sa date, quantite et prix. Le PRU est recalcule automatiquement |
 | **FastAPI** | Un framework Python pour creer des APIs web | Le cerveau de l'app : il expose des URLs (endpoints) que d'autres programmes peuvent appeler pour recuperer des donnees en JSON |
 | **yfinance** | Une librairie Python qui se connecte a Yahoo Finance | Recupere les prix actuels de tes ETFs automatiquement |
 | **PostgreSQL** | Une base de donnees relationnelle | Stocke les positions enrichies (prix actuel, P&L). Tourne dans un container Docker |
@@ -36,25 +39,27 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 
 ### Le flux de donnees en detail
 
-1. Tu edites `portfolio.yaml` pour ajouter/modifier tes positions
-2. Quand tu (ou Streamlit) appelles `GET /portfolio` :
-   - FastAPI lit le fichier YAML
+1. Tu edites `portfolio.yaml` pour definir tes positions initiales
+2. Tu ajoutes tes achats ulterieurs dans `transactions.yaml` (optionnel)
+3. Quand tu (ou Streamlit) appelles `GET /portfolio` :
+   - FastAPI lit `portfolio.yaml` et `transactions.yaml`
+   - Il agrege les lots par ticker+compte et calcule le PRU (Prix de Revient Unitaire)
    - Pour chaque ETF, il demande le prix actuel a Yahoo Finance via yfinance
    - Il calcule les P&L en devise d'origine puis convertit tout en EUR via les taux de change live
    - Il sauvegarde tout en PostgreSQL
    - Il retourne le JSON complet (positions + totaux par compte + total global)
-3. Streamlit recoit ce JSON et l'affiche dans un tableau avec mise en forme (vert = gain, rouge = perte)
-4. Quand tu (ou Streamlit) appelles `GET /holdings/top` :
+4. Streamlit recoit ce JSON et l'affiche dans un tableau avec mise en forme (vert = gain, rouge = perte)
+5. Quand tu (ou Streamlit) appelles `GET /holdings/top` :
    - Pour chaque ETF, il recupere les 10 premieres positions sous-jacentes via yfinance
    - Il calcule le poids effectif de chaque action : poids dans l'ETF x poids de l'ETF dans le portefeuille
    - Il agrege les actions presentes dans plusieurs ETFs (ex: Apple dans IWDA + VWCE)
    - Il retourne le top 20 classe par poids decroissant
-5. Quand tu (ou Streamlit) appelles `GET /sectors` :
+6. Quand tu (ou Streamlit) appelles `GET /sectors` :
    - Pour chaque ETF, il recupere la repartition sectorielle (11 secteurs GICS) via yfinance
    - Il calcule le poids effectif de chaque secteur : poids du secteur dans l'ETF x poids de l'ETF dans le portefeuille
    - Il agrege les secteurs communs a plusieurs ETFs
    - Streamlit affiche le resultat sous forme de camembert (pie chart)
-6. Quand tu (ou Streamlit) appelles `GET /performance?period=ALL` :
+7. Quand tu (ou Streamlit) appelles `GET /performance?period=ALL` :
    - Pour chaque ETF, il recupere les prix historiques quotidiens via yfinance
    - Il recupere les taux de change historiques pour les positions en devise etrangere
    - Il calcule la valeur quotidienne du portefeuille en EUR depuis la date d'achat
@@ -70,7 +75,7 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 ├── app/
 │   ├── main.py            # API FastAPI (endpoints /portfolio, /holdings/top, /sectors, /performance, /health)
 │   ├── streamlit_app.py   # Dashboard web Streamlit
-│   ├── portfolio.py       # Chargement YAML + appel Yahoo Finance + calcul P&L
+│   ├── portfolio.py       # Chargement YAML + transactions + agregation lots/PRU + appel Yahoo Finance + calcul P&L
 │   ├── holdings.py        # Fetch des top holdings ETF + calcul des poids effectifs
 │   ├── sectors.py         # Fetch des secteurs ETF + calcul de l'exposition sectorielle
 │   ├── performance.py    # Historique de performance du portefeuille (P&L, drawdown)
@@ -78,7 +83,8 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 │   ├── models.py          # Modele de la table "positions" en base (SQLAlchemy ORM)
 │   ├── database.py        # Connexion a PostgreSQL
 │   └── config.py          # Configuration (lit le fichier .env)
-├── portfolio.yaml         # Tes positions ETF (a personnaliser)
+├── portfolio.yaml         # Tes positions initiales (a personnaliser)
+├── transactions.yaml      # Achats additionnels (optionnel)
 ├── docker-compose.yml     # Configuration du container PostgreSQL
 ├── requirements.txt       # Dependances Python
 ├── .env                   # Variables d'environnement (URL de la DB, etc.)
@@ -132,7 +138,26 @@ positions:
 
 > Pour trouver le bon ticker : cherche ton ETF sur [finance.yahoo.com](https://finance.yahoo.com/) et copie le symbole (ex: IWDA.AS pour Euronext Amsterdam).
 >
-> **Pas besoin de relancer l'API ou Streamlit** apres modification : le fichier est relu a chaque appel API. Il suffit de rafraichir la page du dashboard (ou attendre 5 min, duree du cache Streamlit).
+> **Pas besoin de relancer l'API ou Streamlit** apres modification : les fichiers sont relus a chaque appel API. Il suffit de rafraichir la page du dashboard (ou attendre 5 min, duree du cache Streamlit).
+
+### 3b. Ajouter des transactions (optionnel)
+
+Si tu renforces une position (achat additionnel), ajoute la transaction dans `transactions.yaml` :
+
+```yaml
+transactions: [
+  - ticker: "IMAE.AS"        # Meme ticker que dans portfolio.yaml
+    account: "CTO IBKR"      # Meme compte
+    qty: 3                    # Nombre de parts achetees
+    price: 101.50             # Prix d'achat unitaire
+    date: "2026-03-15"        # Date de l'achat
+    currency: "EUR"           # Optionnel si le ticker existe deja dans portfolio.yaml
+]
+```
+
+> Le **PRU** (Prix de Revient Unitaire) est recalcule automatiquement en combinant la position initiale de `portfolio.yaml` avec toutes les transactions de `transactions.yaml`.
+>
+> Tu peux aussi creer une position entierement nouvelle (ticker absent de `portfolio.yaml`) via une transaction. Dans ce cas, ajoute le champ `currency`.
 
 ### 4. Lancer l'API (terminal 1)
 
@@ -284,5 +309,6 @@ streamlit run app/streamlit_app.py
 - [ ] Integration IBKR (positions temps reel depuis le broker)
 - [ ] Frontend web (SvelteKit ou React) en remplacement de Streamlit
 - [x] Historique de performance (suivi de la valeur dans le temps)
+- [x] Transactions et calcul PRU automatique
 - [ ] Alertes de prix (notification si un ETF passe un seuil)
 - [x] Graphique d'exposition sectorielle (camembert)

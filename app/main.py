@@ -8,7 +8,7 @@ from app.holdings import compute_top_holdings
 from app.performance import compute_performance, PERIODS
 from app.sectors import compute_sector_exposure
 from app.models import Position
-from app.portfolio import load_portfolio, enrich_positions
+from app.portfolio import load_portfolio, load_transactions, aggregate_positions, enrich_positions
 
 
 @asynccontextmanager
@@ -20,10 +20,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Invest Buddy", lifespan=lifespan)
 
 
+def _load_aggregated() -> list[dict]:
+    """Load positions + transactions and return aggregated positions."""
+    return aggregate_positions(load_portfolio(), load_transactions())
+
+
 @app.get("/portfolio")
 def get_portfolio(db: Session = Depends(get_db)):
-    positions = load_portfolio()
-    enriched = enrich_positions(positions)
+    aggregated = _load_aggregated()
+    enriched = enrich_positions(aggregated)
 
     # Persist to database
     db.query(Position).delete()
@@ -74,8 +79,8 @@ def get_portfolio(db: Session = Depends(get_db)):
 @app.get("/holdings/top")
 def get_top_holdings(top_n: int = 20):
     """Top N effective holdings across the portfolio."""
-    positions = load_portfolio()
-    enriched = enrich_positions(positions)
+    aggregated = _load_aggregated()
+    enriched = enrich_positions(aggregated)
     result = compute_top_holdings(enriched, top_n=top_n)
 
     return {
@@ -100,8 +105,8 @@ def get_top_holdings(top_n: int = 20):
 @app.get("/sectors")
 def get_sectors():
     """Sector exposure across the portfolio."""
-    positions = load_portfolio()
-    enriched = enrich_positions(positions)
+    aggregated = _load_aggregated()
+    enriched = enrich_positions(aggregated)
     result = compute_sector_exposure(enriched)
 
     return {
@@ -129,8 +134,8 @@ def get_performance(period: str = "ALL"):
             status_code=400,
             detail=f"Invalid period '{period}'. Must be one of: {', '.join(sorted(PERIODS))}",
         )
-    positions = load_portfolio()
-    result = compute_performance(positions, period=period)
+    aggregated = _load_aggregated()
+    result = compute_performance(aggregated, period=period)
 
     return {
         "period": result.period,
