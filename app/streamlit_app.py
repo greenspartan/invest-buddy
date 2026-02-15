@@ -92,13 +92,18 @@ with tab_positions:
     df = pd.DataFrame(data["positions"])
     df["PRU"] = df.apply(lambda r: _fmt_price(r, "avg_price"), axis=1)
     df["Prix actuel"] = df.apply(lambda r: _fmt_price(r, "current_price"), axis=1)
+    total_mv = total["market_value"]
+    df["weight_pct"] = df["market_value_eur"].apply(
+        lambda v: round(v / total_mv * 100, 2) if v and total_mv else 0.0
+    )
 
-    df = df[["account", "ticker", "qty", "PRU", "Prix actuel", "market_value_eur", "pnl_eur", "pnl_pct"]]
-    df.columns = ["Compte", "Ticker", "Qty", "PRU", "Prix actuel", "Valeur (EUR)", "P&L (EUR)", "P&L %"]
+    df = df[["account", "ticker", "qty", "PRU", "Prix actuel", "market_value_eur", "weight_pct", "pnl_eur", "pnl_pct"]]
+    df.columns = ["Compte", "Ticker", "Qty", "PRU", "Prix actuel", "Valeur (EUR)", "Poids (%)", "P&L (EUR)", "P&L %"]
 
     st.dataframe(
         df.style.format({
             "Valeur (EUR)": "{:.2f} \u20ac",
+            "Poids (%)": "{:.2f}%",
             "P&L (EUR)": "{:+.2f} \u20ac",
             "P&L %": "{:+.2f}%",
         }).map(
