@@ -29,15 +29,16 @@ def get_portfolio(db: Session = Depends(get_db)):
         db.add(Position(**pos))
     db.commit()
 
-    # Compute totals per account
+    # Compute totals per account (in EUR)
     accounts: dict[str, dict] = {}
     for pos in enriched:
         acct = pos["account"]
         if acct not in accounts:
             accounts[acct] = {"cost_basis": 0.0, "market_value": 0.0}
-        accounts[acct]["cost_basis"] += pos["avg_price"] * pos["qty"]
-        if pos["market_value"] is not None:
-            accounts[acct]["market_value"] += pos["market_value"]
+        if pos["cost_basis_eur"] is not None:
+            accounts[acct]["cost_basis"] += pos["cost_basis_eur"]
+        if pos["market_value_eur"] is not None:
+            accounts[acct]["market_value"] += pos["market_value_eur"]
 
     totals_by_account = {}
     for acct, vals in accounts.items():
@@ -50,7 +51,7 @@ def get_portfolio(db: Session = Depends(get_db)):
             "pnl_pct": pnl_pct,
         }
 
-    # Global totals
+    # Global totals (in EUR)
     total_cost = sum(v["cost_basis"] for v in totals_by_account.values())
     total_mv = sum(v["market_value"] for v in totals_by_account.values())
     total_pnl = round(total_mv - total_cost, 2)

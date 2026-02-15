@@ -1,25 +1,48 @@
 positions:
-  - ticker: "IWDA.AS"       # iShares Core MSCI World (Euronext)
-    qty: 50
-    avg_price: 82.50
-    account: "PEA"
+  - ticker: "IMAE.AS"
+    qty: 5
+    avg_price: 98.75
+    currency: "EUR"
+    account: "CTO IBKR"
 
-  - ticker: "EIMI.MI"       # iShares Core MSCI EM IMI (Milan)
-    qty: 100
-    avg_price: 30.20
-    account: "PEA"
+  - ticker: "DFNS.MI"
+    qty: 15
+    avg_price: 68.35
+    currency: "EUR"
+    account: "CTO IBKR"
 
-  - ticker: "VWCE.DE"       # Vanguard FTSE All-World (Xetra)
-    qty: 30
-    avg_price: 105.00
-    account: "CTO"
+  - ticker: "WDEF.L"
+    qty: 16
+    avg_price: 32.59
+    currency: "USD"
+    account: "CTO IBKR"
 
-  - ticker: "PANX.PA"       # Amundi Nasdaq-100 (Euronext Paris)
-    qty: 40
-    avg_price: 55.80
-    account: "CTO"
+  - ticker: "USPY.L"
+    qty: 14
+    avg_price: 29.46
+    currency: "USD"
+    account: "CTO IBKR"
 
-  - ticker: "ESE.PA"        # BNP Paribas Easy S&P 500 (Euronext Paris)
-    qty: 80
-    avg_price: 22.10
-    account: "PEA"
+  - ticker: "SMH.L"
+    qty: 13
+    avg_price: 72.68
+    currency: "USD"
+    account: "CTO IBKR"
+
+  - ticker: "EIMI.L"
+    qty: 10
+    avg_price: 50.42
+    currency: "USD"
+    account: "CTO IBKR"
+
+  - ticker: "XAID.L"
+    qty: 3
+    avg_price: 181.23
+    currency: "USD"
+    account: "CTO IBKR"
+
+  - ticker: "URNU.L"
+    qty: 12
+    avg_price: 32.85
+    currency: "USD"
+    account: "CTO IBKR"

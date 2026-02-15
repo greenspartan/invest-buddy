@@ -29,20 +29,20 @@ except Exception as e:
 st.header("Positions")
 
 df = pd.DataFrame(data["positions"])
-df = df[["account", "ticker", "qty", "avg_price", "current_price", "market_value", "pnl", "pnl_pct"]]
-df.columns = ["Compte", "Ticker", "Qty", "PRU", "Prix actuel", "Valeur", "P&L", "P&L %"]
+df = df[["account", "ticker", "currency", "qty", "avg_price", "current_price", "market_value_eur", "pnl_eur", "pnl_pct"]]
+df.columns = ["Compte", "Ticker", "Devise", "Qty", "PRU", "Prix actuel", "Valeur (EUR)", "P&L (EUR)", "P&L %"]
 
 st.dataframe(
     df.style.format({
-        "PRU": "{:.2f} EUR",
-        "Prix actuel": "{:.2f} EUR",
-        "Valeur": "{:.2f} EUR",
-        "P&L": "{:+.2f} EUR",
+        "PRU": "{:.2f}",
+        "Prix actuel": "{:.2f}",
+        "Valeur (EUR)": "{:.2f}",
+        "P&L (EUR)": "{:+.2f}",
         "P&L %": "{:+.2f}%",
     }).map(
         lambda v: "color: green" if isinstance(v, (int, float)) and v > 0
         else ("color: red" if isinstance(v, (int, float)) and v < 0 else ""),
-        subset=["P&L", "P&L %"],
+        subset=["P&L (EUR)", "P&L %"],
     ),
     use_container_width=True,
     hide_index=True,

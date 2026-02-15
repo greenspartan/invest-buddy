@@ -40,7 +40,7 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 2. Quand tu (ou Streamlit) appelles `GET /portfolio` :
    - FastAPI lit le fichier YAML
    - Pour chaque ETF, il demande le prix actuel a Yahoo Finance via yfinance
-   - Il calcule : valeur marche = prix actuel x quantite, P&L = valeur marche - cout d'achat
+   - Il calcule les P&L en devise d'origine puis convertit tout en EUR via les taux de change live
    - Il sauvegarde tout en PostgreSQL
    - Il retourne le JSON complet (positions + totaux par compte + total global)
 3. Streamlit recoit ce JSON et l'affiche dans un tableau avec mise en forme (vert = gain, rouge = perte)
@@ -61,6 +61,7 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 │   ├── streamlit_app.py   # Dashboard web Streamlit
 │   ├── portfolio.py       # Chargement YAML + appel Yahoo Finance + calcul P&L
 │   ├── holdings.py        # Fetch des top holdings ETF + calcul des poids effectifs
+│   ├── forex.py           # Taux de change via yfinance (cache en memoire)
 │   ├── models.py          # Modele de la table "positions" en base (SQLAlchemy ORM)
 │   ├── database.py        # Connexion a PostgreSQL
 │   └── config.py          # Configuration (lit le fichier .env)
@@ -109,8 +110,11 @@ positions:
   - ticker: "IWDA.AS"       # Ticker Yahoo Finance
     qty: 50                  # Nombre de parts
     avg_price: 82.50         # Prix d'achat moyen
+    currency: "EUR"          # Devise de cotation (EUR, USD, GBP...)
     account: "PEA"           # Compte (PEA, CTO, etc.)
 ```
+
+> Les positions en devise etrangere sont automatiquement converties en EUR (devise de base) pour les totaux et le P&L. Les taux de change sont recuperes en temps reel via Yahoo Finance.
 
 > Pour trouver le bon ticker : cherche ton ETF sur [finance.yahoo.com](https://finance.yahoo.com/) et copie le symbole (ex: IWDA.AS pour Euronext Amsterdam).
 >
@@ -158,20 +162,24 @@ streamlit run app/streamlit_app.py
 {
   "positions": [
     {
-      "ticker": "IWDA.AS",
-      "qty": 50,
-      "avg_price": 82.5,
-      "current_price": 112.28,
-      "market_value": 5613.75,
-      "pnl": 1488.75,
-      "pnl_pct": 36.09,
-      "account": "PEA"
+      "ticker": "WDEF.L",
+      "qty": 16,
+      "avg_price": 32.59,
+      "current_price": 33.25,
+      "currency": "USD",
+      "market_value": 532.08,
+      "market_value_eur": 448.31,
+      "cost_basis_eur": 439.35,
+      "pnl": 10.64,
+      "pnl_eur": 8.96,
+      "pnl_pct": 2.04,
+      "account": "CTO IBKR"
     }
   ],
   "totals_by_account": {
-    "PEA": { "cost_basis": 8913.0, "market_value": 12145.6, "pnl": 3232.6, "pnl_pct": 36.27 }
+    "CTO IBKR": { "cost_basis": 4317.01, "market_value": 4117.36, "pnl": -199.65, "pnl_pct": -4.62 }
   },
-  "total": { "cost_basis": 14295.0, "market_value": 19133.12, "pnl": 4838.12, "pnl_pct": 33.84 }
+  "total": { "cost_basis": 4317.01, "market_value": 4117.36, "pnl": -199.65, "pnl_pct": -4.62 }
 }
 ```
 

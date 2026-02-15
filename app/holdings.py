@@ -84,7 +84,7 @@ def compute_top_holdings(
     Parameters
     ----------
     positions:
-        Enriched position dicts (must contain ``ticker`` and ``market_value``).
+        Enriched position dicts (must contain ``ticker`` and ``market_value_eur``).
     top_n:
         Number of holdings to return.
 
@@ -93,8 +93,8 @@ def compute_top_holdings(
     TopHoldingsResult
         Holdings sorted by descending effective weight, plus coverage metadata.
     """
-    valid = [p for p in positions if p.get("market_value") is not None]
-    total_mv = sum(p["market_value"] for p in valid)
+    valid = [p for p in positions if p.get("market_value_eur") is not None]
+    total_mv = sum(p["market_value_eur"] for p in valid)
 
     if total_mv == 0:
         return TopHoldingsResult([], [], [], 0.0)
@@ -106,7 +106,7 @@ def compute_top_holdings(
 
     for pos in valid:
         ticker = pos["ticker"]
-        etf_weight = pos["market_value"] / total_mv
+        etf_weight = pos["market_value_eur"] / total_mv
         holdings = fetch_etf_holdings(ticker)
 
         if not holdings:
@@ -114,7 +114,7 @@ def compute_top_holdings(
             continue
 
         etfs_analyzed.append(ticker)
-        covered_mv += pos["market_value"]
+        covered_mv += pos["market_value_eur"]
 
         for h in holdings:
             eff_w = h.weight * etf_weight
