@@ -113,6 +113,8 @@ positions:
 ```
 
 > Pour trouver le bon ticker : cherche ton ETF sur [finance.yahoo.com](https://finance.yahoo.com/) et copie le symbole (ex: IWDA.AS pour Euronext Amsterdam).
+>
+> **Pas besoin de relancer l'API ou Streamlit** apres modification : le fichier est relu a chaque appel API. Il suffit de rafraichir la page du dashboard (ou attendre 5 min, duree du cache Streamlit).
 
 ### 4. Lancer l'API (terminal 1)
 
