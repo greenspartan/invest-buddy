@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 
 API_URL = "http://localhost:8000/portfolio"
+HOLDINGS_URL = "http://localhost:8000/holdings/top"
 
 st.set_page_config(page_title="Invest Buddy", layout="wide")
 st.title("Invest Buddy")
@@ -66,3 +67,40 @@ col1.metric("Valeur totale", f"{total['market_value']:,.2f} EUR")
 col2.metric("Cout total", f"{total['cost_basis']:,.2f} EUR")
 col3.metric("P&L total", f"{total['pnl']:+,.2f} EUR")
 col4.metric("P&L %", f"{total['pnl_pct']:+.2f}%")
+
+# --- Top 20 underlying holdings ---
+st.header("Top 20 positions sous-jacentes")
+
+
+@st.cache_data(ttl=300)
+def fetch_top_holdings():
+    resp = requests.get(HOLDINGS_URL, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
+
+
+try:
+    holdings_data = fetch_top_holdings()
+except Exception as e:
+    st.warning(f"Impossible de recuperer les holdings: {e}")
+    holdings_data = None
+
+if holdings_data:
+    meta = holdings_data["meta"]
+    no_data_label = ", ".join(meta["etfs_no_data"]) if meta["etfs_no_data"] else "aucun"
+    st.caption(
+        f"Analyse basee sur {len(meta['etfs_analyzed'])} ETFs "
+        f"({meta['portfolio_coverage_pct']:.1f}% du portefeuille). "
+        f"Donnees indisponibles pour : {no_data_label}."
+    )
+
+    df_h = pd.DataFrame(holdings_data["top_holdings"])
+    df_h["etf_sources"] = df_h["etf_sources"].apply(lambda x: ", ".join(x))
+    df_h = df_h[["rank", "symbol", "name", "effective_weight_pct", "etf_sources"]]
+    df_h.columns = ["#", "Symbole", "Nom", "Poids effectif (%)", "Present dans"]
+
+    st.dataframe(
+        df_h.style.format({"Poids effectif (%)": "{:.2f}%"}),
+        use_container_width=True,
+        hide_index=True,
+    )

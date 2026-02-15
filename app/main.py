@@ -4,6 +4,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 
 from app.database import init_db, get_db
+from app.holdings import compute_top_holdings
 from app.models import Position
 from app.portfolio import load_portfolio, enrich_positions
 
@@ -63,6 +64,32 @@ def get_portfolio(db: Session = Depends(get_db)):
             "market_value": round(total_mv, 2),
             "pnl": total_pnl,
             "pnl_pct": total_pnl_pct,
+        },
+    }
+
+
+@app.get("/holdings/top")
+def get_top_holdings(top_n: int = 20):
+    """Top N effective holdings across the portfolio."""
+    positions = load_portfolio()
+    enriched = enrich_positions(positions)
+    result = compute_top_holdings(enriched, top_n=top_n)
+
+    return {
+        "top_holdings": [
+            {
+                "rank": i + 1,
+                "symbol": h.symbol,
+                "name": h.name,
+                "effective_weight_pct": round(h.effective_weight * 100, 4),
+                "etf_sources": h.etf_sources,
+            }
+            for i, h in enumerate(result.holdings)
+        ],
+        "meta": {
+            "etfs_analyzed": result.etfs_analyzed,
+            "etfs_no_data": result.etfs_no_data,
+            "portfolio_coverage_pct": round(result.portfolio_coverage * 100, 2),
         },
     }
 
