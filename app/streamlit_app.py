@@ -28,16 +28,25 @@ except Exception as e:
 # --- Positions table ---
 st.header("Positions")
 
+CURRENCY_SYMBOLS = {"EUR": "\u20ac", "USD": "$", "GBP": "\u00a3", "CHF": "CHF", "JPY": "\u00a5"}
+
 df = pd.DataFrame(data["positions"])
-df = df[["account", "ticker", "currency", "qty", "avg_price", "current_price", "market_value_eur", "pnl_eur", "pnl_pct"]]
-df.columns = ["Compte", "Ticker", "Devise", "Qty", "PRU", "Prix actuel", "Valeur (EUR)", "P&L (EUR)", "P&L %"]
+
+# Format PRU and current price with native currency symbol
+def _fmt_price(row, col):
+    sym = CURRENCY_SYMBOLS.get(row["currency"], row["currency"])
+    return f"{row[col]:.2f} {sym}" if row[col] is not None else ""
+
+df["PRU"] = df.apply(lambda r: _fmt_price(r, "avg_price"), axis=1)
+df["Prix actuel"] = df.apply(lambda r: _fmt_price(r, "current_price"), axis=1)
+
+df = df[["account", "ticker", "qty", "PRU", "Prix actuel", "market_value_eur", "pnl_eur", "pnl_pct"]]
+df.columns = ["Compte", "Ticker", "Qty", "PRU", "Prix actuel", "Valeur (EUR)", "P&L (EUR)", "P&L %"]
 
 st.dataframe(
     df.style.format({
-        "PRU": "{:.2f}",
-        "Prix actuel": "{:.2f}",
-        "Valeur (EUR)": "{:.2f}",
-        "P&L (EUR)": "{:+.2f}",
+        "Valeur (EUR)": "{:.2f} \u20ac",
+        "P&L (EUR)": "{:+.2f} \u20ac",
         "P&L %": "{:+.2f}%",
     }).map(
         lambda v: "color: green" if isinstance(v, (int, float)) and v > 0
