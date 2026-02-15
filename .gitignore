@@ -8,3 +8,4 @@ build/
 venv/
 *.db
 .DS_Store
+conversation-*
