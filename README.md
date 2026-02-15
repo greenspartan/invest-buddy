@@ -49,6 +49,11 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
    - Il calcule le poids effectif de chaque action : poids dans l'ETF x poids de l'ETF dans le portefeuille
    - Il agrege les actions presentes dans plusieurs ETFs (ex: Apple dans IWDA + VWCE)
    - Il retourne le top 20 classe par poids decroissant
+5. Quand tu (ou Streamlit) appelles `GET /sectors` :
+   - Pour chaque ETF, il recupere la repartition sectorielle (11 secteurs GICS) via yfinance
+   - Il calcule le poids effectif de chaque secteur : poids du secteur dans l'ETF x poids de l'ETF dans le portefeuille
+   - Il agrege les secteurs communs a plusieurs ETFs
+   - Streamlit affiche le resultat sous forme de camembert (pie chart)
 
 ---
 
@@ -57,10 +62,11 @@ portfolio.yaml          Tu definis tes positions ici (tickers, quantites, prix d
 ```
 .
 ├── app/
-│   ├── main.py            # API FastAPI (endpoints /portfolio, /holdings/top, /health)
+│   ├── main.py            # API FastAPI (endpoints /portfolio, /holdings/top, /sectors, /health)
 │   ├── streamlit_app.py   # Dashboard web Streamlit
 │   ├── portfolio.py       # Chargement YAML + appel Yahoo Finance + calcul P&L
 │   ├── holdings.py        # Fetch des top holdings ETF + calcul des poids effectifs
+│   ├── sectors.py         # Fetch des secteurs ETF + calcul de l'exposition sectorielle
 │   ├── forex.py           # Taux de change via yfinance (cache en memoire)
 │   ├── models.py          # Modele de la table "positions" en base (SQLAlchemy ORM)
 │   ├── database.py        # Connexion a PostgreSQL
@@ -132,6 +138,7 @@ uvicorn app.main:app --reload
 URLs disponibles :
 - **http://127.0.0.1:8000/portfolio** — Donnees JSON du portefeuille
 - **http://127.0.0.1:8000/holdings/top** — Top 20 positions sous-jacentes
+- **http://127.0.0.1:8000/sectors** — Exposition sectorielle du portefeuille
 - **http://127.0.0.1:8000/docs** — Documentation interactive Swagger UI
 - **http://127.0.0.1:8000/redoc** — Documentation alternative (ReDoc)
 
@@ -152,6 +159,7 @@ streamlit run app/streamlit_app.py
 |---------|-----|-------------|
 | GET | `/portfolio` | Retourne les positions enrichies avec prix live, P&L et totaux |
 | GET | `/holdings/top` | Top 20 positions sous-jacentes du portefeuille (poids effectifs agreges) |
+| GET | `/sectors` | Exposition sectorielle du portefeuille (poids effectifs agreges par secteur GICS) |
 | GET | `/health` | Health check (`{"status": "ok"}`) |
 | GET | `/docs` | Documentation Swagger UI (interface de test) |
 | GET | `/redoc` | Documentation ReDoc (lecture seule) |
@@ -206,6 +214,23 @@ streamlit run app/streamlit_app.py
 
 > **Note** : certains ETFs (ex: PANX.PA, ESE.PA) n'exposent pas leurs holdings via Yahoo Finance. Le champ `meta` indique quels ETFs ont ete analyses et le pourcentage du portefeuille couvert.
 
+### Exemple de reponse `/sectors`
+
+```json
+{
+  "sectors": [
+    {"name": "Technology", "weight_pct": 25.01},
+    {"name": "Financial Services", "weight_pct": 16.43},
+    {"name": "Healthcare", "weight_pct": 11.22}
+  ],
+  "meta": {
+    "etfs_analyzed": ["IWDA.AS", "EIMI.MI"],
+    "etfs_no_data": ["PANX.PA"],
+    "portfolio_coverage_pct": 82.15
+  }
+}
+```
+
 ---
 
 ## Commandes utiles
@@ -227,4 +252,4 @@ streamlit run app/streamlit_app.py
 - [ ] Frontend web (SvelteKit ou React) en remplacement de Streamlit
 - [ ] Historique de performance (suivi de la valeur dans le temps)
 - [ ] Alertes de prix (notification si un ETF passe un seuil)
-- [ ] Graphiques de repartition (camembert par compte, par ETF)
+- [x] Graphique d'exposition sectorielle (camembert)

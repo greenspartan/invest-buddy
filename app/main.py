@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import init_db, get_db
 from app.holdings import compute_top_holdings
+from app.sectors import compute_sector_exposure
 from app.models import Position
 from app.portfolio import load_portfolio, enrich_positions
 
@@ -86,6 +87,26 @@ def get_top_holdings(top_n: int = 20):
                 "etf_sources": h.etf_sources,
             }
             for i, h in enumerate(result.holdings)
+        ],
+        "meta": {
+            "etfs_analyzed": result.etfs_analyzed,
+            "etfs_no_data": result.etfs_no_data,
+            "portfolio_coverage_pct": round(result.portfolio_coverage * 100, 2),
+        },
+    }
+
+
+@app.get("/sectors")
+def get_sectors():
+    """Sector exposure across the portfolio."""
+    positions = load_portfolio()
+    enriched = enrich_positions(positions)
+    result = compute_sector_exposure(enriched)
+
+    return {
+        "sectors": [
+            {"name": sector, "weight_pct": round(weight * 100, 2)}
+            for sector, weight in result.sectors.items()
         ],
         "meta": {
             "etfs_analyzed": result.etfs_analyzed,

@@ -1,9 +1,11 @@
 import streamlit as st
 import requests
 import pandas as pd
+import plotly.express as px
 
 API_URL = "http://localhost:8000/portfolio"
 HOLDINGS_URL = "http://localhost:8000/holdings/top"
+SECTORS_URL = "http://localhost:8000/sectors"
 
 st.set_page_config(page_title="Invest Buddy", layout="wide")
 st.title("Invest Buddy")
@@ -113,3 +115,40 @@ if holdings_data:
         use_container_width=True,
         hide_index=True,
     )
+
+# --- Sector exposure pie chart ---
+st.header("Exposition sectorielle")
+
+
+@st.cache_data(ttl=300)
+def fetch_sectors():
+    resp = requests.get(SECTORS_URL, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
+
+
+try:
+    sectors_data = fetch_sectors()
+except Exception as e:
+    st.warning(f"Impossible de recuperer les secteurs: {e}")
+    sectors_data = None
+
+if sectors_data and sectors_data["sectors"]:
+    meta_s = sectors_data["meta"]
+    no_data_s = ", ".join(meta_s["etfs_no_data"]) if meta_s["etfs_no_data"] else "aucun"
+    st.caption(
+        f"Analyse basee sur {len(meta_s['etfs_analyzed'])} ETFs "
+        f"({meta_s['portfolio_coverage_pct']:.1f}% du portefeuille). "
+        f"Donnees indisponibles pour : {no_data_s}."
+    )
+
+    df_s = pd.DataFrame(sectors_data["sectors"])
+    fig = px.pie(
+        df_s,
+        names="name",
+        values="weight_pct",
+        hole=0.35,
+    )
+    fig.update_traces(textinfo="label+percent", textposition="outside")
+    fig.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
+    st.plotly_chart(fig, use_container_width=True)
