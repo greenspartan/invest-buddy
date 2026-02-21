@@ -10,3 +10,4 @@ venv/
 .DS_Store
 conversation-*
 macro_outlook.yaml
+context/**/*.pdf
