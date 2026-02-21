@@ -65,8 +65,8 @@ def fetch_target(mode: str = "smart"):
 
 
 @st.cache_data(ttl=300)
-def fetch_drift(mode: str = "smart"):
-    resp = requests.get(DRIFT_URL, params={"mode": mode}, timeout=30)
+def fetch_drift():
+    resp = requests.get(DRIFT_URL, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -614,6 +614,8 @@ with tab_macro:
 # === Tab 6: Allocation Cible ===============================================
 with tab_target:
 
+    _TYPE_LABELS = {"thematique": "Thematique", "geo": "Geographique", "secteur": "Sectoriel"}
+
     target_mode = st.radio(
         "Mode d'allocation",
         ["Smart (macro-driven)", "Statique (YAML)"],
@@ -628,37 +630,66 @@ with tab_target:
         st.warning(f"Impossible de recuperer l'allocation cible: {e}")
         target_data = None
 
-    if target_data and target_data["allocations"]:
+    if target_data:
         method = target_data.get("method", "static")
 
-        if method == "smart":
+        if method == "smart" and target_data.get("themes"):
+            # --- Smart mode: theme-based allocation ---
             outlook = target_data.get("outlook", "neutral")
             score = target_data.get("score", 0.0)
             cfg = _OUTLOOK_CONFIG.get(outlook, _OUTLOOK_CONFIG["neutral"])
             st.caption(
-                f"Allocation generee depuis l'analyse macro "
-                f"({cfg['icon']} {cfg['label']}, score: {score:+.3f})"
+                f"Allocation thematique generee depuis l'analyse macro "
+                f"({cfg['icon']} {cfg['label']}, score: {score:+.3f}). "
+                f"Mappez vos ETFs a ces themes dans target_portfolio.yaml."
             )
 
-        total_w = target_data["total_weight_pct"]
-        if abs(total_w - 100.0) > 0.01:
-            st.warning(f"La somme des poids est de {total_w:.1f}% (devrait etre 100%)")
+            total_w = target_data["total_weight_pct"]
+            if abs(total_w - 100.0) > 0.01:
+                st.warning(f"La somme des poids est de {total_w:.1f}% (devrait etre 100%)")
 
-        df_target = pd.DataFrame(target_data["allocations"])
-        has_rationale = method == "smart" and "rationale" in df_target.columns
+            df_themes = pd.DataFrame(target_data["themes"])
+            df_themes["Type"] = df_themes["type"].map(lambda t: _TYPE_LABELS.get(t, t))
+            df_themes = df_themes[["name_fr", "Type", "weight_pct", "rationale"]]
+            df_themes.columns = ["Theme", "Type", "Poids cible (%)", "Raison"]
 
-        if has_rationale:
-            df_target = df_target[["ticker", "name", "weight_pct", "rationale"]]
-            df_target.columns = ["Ticker", "Nom", "Poids cible (%)", "Raison"]
             st.dataframe(
-                df_target.style.format({"Poids cible (%)": "{:.1f}%"}),
+                df_themes.style.format({"Poids cible (%)": "{:.1f}%"}),
                 use_container_width=True,
                 hide_index=True,
                 column_config={
                     "Raison": st.column_config.TextColumn(width="large"),
                 },
             )
-        else:
+
+            # Pie chart by theme
+            fig_target = px.pie(
+                df_themes,
+                names="Theme",
+                values="Poids cible (%)",
+                hole=0.4,
+            )
+            fig_target.update_traces(
+                sort=False,
+                textinfo="label+percent",
+                textposition="outside",
+                pull=[0.03] * len(df_themes),
+                hovertemplate="<b>%{label}</b><br>Poids: %{value:.1f}%<extra></extra>",
+            )
+            fig_target.update_layout(
+                height=650,
+                legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+                margin=dict(t=40, b=120, l=40, r=40),
+            )
+            st.plotly_chart(fig_target, use_container_width=True)
+
+        elif target_data.get("allocations"):
+            # --- Static mode: ETF-based allocation ---
+            total_w = target_data["total_weight_pct"]
+            if abs(total_w - 100.0) > 0.01:
+                st.warning(f"La somme des poids est de {total_w:.1f}% (devrait etre 100%)")
+
+            df_target = pd.DataFrame(target_data["allocations"])
             df_target = df_target[["ticker", "name", "weight_pct"]]
             df_target.columns = ["Ticker", "Nom", "Poids cible (%)"]
             st.dataframe(
@@ -667,45 +698,37 @@ with tab_target:
                 hide_index=True,
             )
 
-        # Pie chart
-        df_pie = df_target[["Nom", "Poids cible (%)"]].copy()
-        fig_target = px.pie(
-            df_pie,
-            names="Nom",
-            values="Poids cible (%)",
-            hole=0.4,
-        )
-        fig_target.update_traces(
-            sort=False,
-            textinfo="label+percent",
-            textposition="outside",
-            pull=[0.03] * len(df_pie),
-            hovertemplate="<b>%{label}</b><br>Poids: %{value:.1f}%<extra></extra>",
-        )
-        fig_target.update_layout(
-            height=650,
-            legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
-            margin=dict(t=40, b=120, l=40, r=40),
-        )
-        st.plotly_chart(fig_target, use_container_width=True)
+            # Pie chart
+            fig_target = px.pie(
+                df_target,
+                names="Nom",
+                values="Poids cible (%)",
+                hole=0.4,
+            )
+            fig_target.update_traces(
+                sort=False,
+                textinfo="label+percent",
+                textposition="outside",
+                pull=[0.03] * len(df_target),
+                hovertemplate="<b>%{label}</b><br>Poids: %{value:.1f}%<extra></extra>",
+            )
+            fig_target.update_layout(
+                height=650,
+                legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+                margin=dict(t=40, b=120, l=40, r=40),
+            )
+            st.plotly_chart(fig_target, use_container_width=True)
 
-    elif target_data:
-        st.info("Aucune allocation cible definie. Editez target_portfolio.yaml ou configurez etf_universe dans macro_config.yaml.")
+        else:
+            st.info("Aucune allocation cible definie. Configurez allocation_themes dans macro_config.yaml (smart) ou target_portfolio.yaml (statique).")
 
 # === Tab 7: Rebalancement ==================================================
 with tab_drift:
 
-    drift_mode = st.radio(
-        "Mode cible",
-        ["Smart (macro-driven)", "Statique (YAML)"],
-        index=0,
-        horizontal=True,
-        key="drift_mode",
-    )
-    drift_mode_param = "smart" if "Smart" in drift_mode else "static"
+    st.caption("Drift calcule par rapport a target_portfolio.yaml (allocation statique par ETF).")
 
     try:
-        drift_data = fetch_drift(mode=drift_mode_param)
+        drift_data = fetch_drift()
     except Exception as e:
         st.warning(f"Impossible de recuperer le drift: {e}")
         drift_data = None

@@ -342,178 +342,60 @@ news_sources:
     category: "macro"
 
 
-# --- Univers ETF pour l'allocation cible smart ---
-# Le champ 'short' correspond aux tickers dans les mega-trends (etfs_*)
-# Le champ 'ticker' est le symbole exchange-qualifie (yfinance/portfolio)
-# 'aliases' pour gerer les divergences short vs ticker prefix
-etf_universe:
-  # --- Actuellement detenus ---
-  - short: "DFNS"
-    ticker: "DFNS.MI"
-    name: "Global X Defence Tech"
+# --- Themes d'allocation pour l'allocation cible smart ---
+# Chaque theme reference des mega-trends par ID (supporting_mega_trends)
+# L'algo calcule un poids % par theme. L'utilisateur mappe ses ETFs aux themes.
+allocation_themes:
+  - id: defense
+    name_fr: "Defense & Aerospatiale"
     type: "thematique"
+    supporting_mega_trends: ["rearmement_mondial", "rearm_europe"]
     sectors: ["Industrials", "Aerospace & Defense"]
 
-  - short: "WDEF"
-    ticker: "WDEF.L"
-    name: "WisdomTree Global Defence"
+  - id: ia_tech
+    name_fr: "Intelligence Artificielle & Tech"
     type: "thematique"
-    sectors: ["Industrials", "Aerospace & Defense"]
+    supporting_mega_trends: ["ia_capex", "investai", "chips_acts"]
+    sectors: ["Information Technology", "Communication Services"]
 
-  - short: "SMH"
-    ticker: "SMH.L"
-    name: "VanEck Semiconductor"
+  - id: semiconducteurs
+    name_fr: "Semiconducteurs"
     type: "thematique"
+    supporting_mega_trends: ["ia_capex", "chips_acts"]
     sectors: ["Information Technology", "Semiconductors"]
 
-  - short: "EIMI"
-    ticker: "EIMI.L"
-    name: "iShares EM"
+  - id: europe
+    name_fr: "Europe"
     type: "geo"
+    supporting_mega_trends: ["rearm_europe", "repowereu", "investai", "nextgeneu"]
     sectors: []
 
-  - short: "URNU"
-    ticker: "URNU.L"
-    name: "Sprott Uranium"
+  - id: energie_uranium
+    name_fr: "Energie & Uranium"
     type: "thematique"
+    supporting_mega_trends: ["repowereu", "energie_geopolitique"]
     sectors: ["Energy", "Utilities"]
 
-  - short: "XAIX"
-    ticker: "XAID.L"
-    name: "Xtrackers AI & Big Data"
-    type: "thematique"
-    sectors: ["Information Technology"]
-    aliases: ["XAID"]
-
-  - short: "IMAE"
-    ticker: "IMAE.AS"
-    name: "iShares MSCI Europe"
+  - id: asie_pacifique
+    name_fr: "Asie/Pacifique"
     type: "geo"
+    supporting_mega_trends: ["chips_acts", "nearshoring"]
     sectors: []
 
-  - short: "USPY"
-    ticker: "USPY.L"
-    name: "iShares S&P 500 USD"
+  - id: emergents
+    name_fr: "Marches Emergents"
     type: "geo"
+    supporting_mega_trends: ["recovery_em", "nearshoring"]
     sectors: []
 
-  # --- Candidats defense ---
-  - short: "ISPY"
-    ticker: "ISPY.L"
-    name: "iShares Global Aerospace & Defence"
+  - id: infrastructure
+    name_fr: "Infrastructure"
     type: "thematique"
-    sectors: ["Industrials", "Aerospace & Defense"]
-
-  - short: "DEFS"
-    ticker: "DEFS.L"
-    name: "HANetf Future of Defence"
-    type: "thematique"
-    sectors: ["Industrials", "Aerospace & Defense"]
-
-  # --- Candidats tech/IA ---
-  - short: "SKYE"
-    ticker: "SKYE.L"
-    name: "iShares Cloud Computing"
-    type: "thematique"
-    sectors: ["Information Technology"]
-
-  - short: "RBOT"
-    ticker: "RBOT.L"
-    name: "iShares Automation & Robotics"
-    type: "thematique"
-    sectors: ["Information Technology", "Industrials"]
-
-  # --- Candidats geo ---
-  - short: "EUNK"
-    ticker: "EUNK.L"
-    name: "iShares Core MSCI Europe"
-    type: "geo"
-    sectors: []
-
-  - short: "QDV5"
-    ticker: "QDV5.DE"
-    name: "iShares EM Dividend"
-    type: "geo"
-    sectors: []
-
-  - short: "IQQK"
-    ticker: "SXRV.DE"
-    name: "iShares MSCI Asia ex-Japan"
-    type: "geo"
-    sectors: []
-    aliases: ["IQQK"]
-
-  - short: "SJPA"
-    ticker: "SJPA.L"
-    name: "iShares MSCI Japan"
-    type: "geo"
-    sectors: []
-
-  # --- Candidats sectoriels ---
-  - short: "XDWI"
-    ticker: "XDWI.DE"
-    name: "Xtrackers MSCI World Industrials"
-    type: "secteur"
-    sectors: ["Industrials"]
-
-  - short: "XDWT"
-    ticker: "XDWT.DE"
-    name: "Xtrackers MSCI World IT"
-    type: "secteur"
-    sectors: ["Information Technology"]
-
-  - short: "XDWU"
-    ticker: "XDWU.DE"
-    name: "Xtrackers MSCI World Utilities"
-    type: "secteur"
-    sectors: ["Utilities"]
-
-  - short: "XDW0"
-    ticker: "XDW0.DE"
-    name: "Xtrackers MSCI World Energy"
-    type: "secteur"
-    sectors: ["Energy"]
-
-  - short: "XDWF"
-    ticker: "XDWF.DE"
-    name: "Xtrackers MSCI World Financials"
-    type: "secteur"
-    sectors: ["Financials"]
-
-  - short: "XDWM"
-    ticker: "XDWM.DE"
-    name: "Xtrackers MSCI World Materials"
-    type: "secteur"
-    sectors: ["Materials"]
-
-  # --- Candidats infra/energie ---
-  - short: "INFR"
-    ticker: "INFR.L"
-    name: "iShares Global Infrastructure"
-    type: "thematique"
+    supporting_mega_trends: ["infra_transport", "nextgeneu", "repowereu"]
     sectors: ["Industrials", "Utilities"]
 
-  # --- Candidats diversification ---
-  - short: "SGLD"
-    ticker: "SGLD.L"
-    name: "iShares Physical Gold"
+  - id: or_bitcoin
+    name_fr: "Or & Bitcoin (couverture)"
     type: "thematique"
-    sectors: []
-
-  - short: "BCHN"
-    ticker: "BCHN.L"
-    name: "21Shares Bitcoin ETP"
-    type: "thematique"
-    sectors: []
-
-  - short: "HLTW"
-    ticker: "HLTW.DE"
-    name: "Xtrackers MSCI World Health Care"
-    type: "secteur"
-    sectors: ["Health Care"]
-
-  - short: "XCS6"
-    ticker: "XCS6.DE"
-    name: "Xtrackers S&P 500 Equal Weight"
-    type: "geo"
+    supporting_mega_trends: ["shift_fed"]
     sectors: []

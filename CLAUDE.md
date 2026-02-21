@@ -33,8 +33,8 @@
 - `sectors.py` — exposition sectorielle GICS + agregation par ETF
 - `performance.py` — perf historique (prix + forex historiques, P&L %, drawdown)
 - `macro.py` — dashboard macro complet: 21 indicateurs (FRED/ECB/yfinance) + mega-trends + plans de relance + parser Lyn Alden + sell-side views + signaux sectoriels + scoring risk-on/risk-off + cache YAML + fil d'actualite RSS (feedparser, cache 30min)
-- `allocation.py` — moteur d'allocation intelligente: scoring ETFs depuis macro signals (mega-trends, secteurs, risk outlook) → poids % + rationale FR. Max 10 ETFs, seuil score 2.0, poids min 4% / max 25%
-- `target.py` — allocation cible dual-mode (smart depuis macro ou static depuis target_portfolio.yaml) + calcul drift vs portefeuille live
+- `allocation.py` — moteur d'allocation thematique: scoring themes d'investissement depuis macro signals (mega-trends, secteurs, risk outlook) → poids % par theme + rationale FR. L'utilisateur mappe ses ETFs aux themes. Max 10 themes, seuil score 1.0, poids min 5% / max 25%
+- `target.py` — allocation cible statique (target_portfolio.yaml, ETFs manuels) + calcul drift vs portefeuille live
 - `models.py` — modele SQLAlchemy Position
 - `database.py` — connexion PostgreSQL
 - `config.py` — DATABASE_URL, PORTFOLIO_PATH, TRANSACTIONS_PATH, TARGET_PATH, BASE_CURRENCY, FRED_API_KEY, MACRO_CONFIG_PATH, LYN_ALDEN_DIR, SELL_SIDE_DIR
@@ -45,8 +45,8 @@
 - GET /sectors — exposition sectorielle (11 secteurs GICS)
 - GET /performance?period=ALL — perf historique (periodes: 1M, 3M, 6M, 1Y, YTD, ALL)
 - GET /macro?refresh=false — dashboard macro complet: indicateurs (21), mega-trends (13), plans de relance (12), sell-side views (2), Lyn Alden insights (8), signaux sectoriels (11+) + outlook + fil d'actualite RSS (cache YAML 6h pour macro, 30min pour news, refresh=true force re-fetch)
-- GET /target?mode=smart — allocation cible intelligente deduite de l'analyse macro (10 ETFs max, rationale FR par ligne). mode=static pour fallback YAML
-- GET /drift?mode=smart — drift portefeuille live vs allocation cible (smart ou static) + suggestions rebalancement
+- GET /target?mode=smart — allocation thematique deduite de l'analyse macro (9 themes, rationale FR par ligne). mode=static pour ETFs depuis target_portfolio.yaml
+- GET /drift — drift portefeuille live vs target_portfolio.yaml (allocation statique par ETF) + suggestions rebalancement
 - GET /health — health check
 
 ## Contexte Macro
@@ -61,13 +61,14 @@
   - 12 plans de relance (5 US + 7 EU) avec statut, montants, secteurs
   - Previsions sell-side (JPMorgan, BofA) avec forecasts, themes, risques
   - 6 sources RSS (Reuters, Les Echos, Zone Bourse, Investing.com, BCE, Fed)
-  - 27 ETFs dans etf_universe (mapping short ticker → ticker exchange + type + secteurs)
+  - 9 themes d'allocation (allocation_themes) avec mega-trends associes
   - Relu a chaque appel /macro (pas de restart necessaire)
-- **Allocation intelligente** : allocation.py calcule les poids ETFs depuis les signaux macro
+- **Allocation thematique** : allocation.py calcule les poids par theme d'investissement
+  - Themes: Defense, IA & Tech, Semiconducteurs, Europe, Energie & Uranium, Asie/Pacifique, Emergents, Infrastructure, Or & Bitcoin
   - Score = trend_score (force mega-trends) + sector_adjustment (bullish/bearish) + risk_adjustment (risk-on/off × type)
-  - Seuil minimum score 2.0, max 10 ETFs, poids entre 4% et 25%, normalises a 100%
-  - Rationale genere en francais pour chaque ETF
-  - etf_universe dans macro_config.yaml mappe les short tickers (mega-trends) vers les tickers exchange (yfinance)
+  - Seuil minimum score 1.0, max 10 themes, poids entre 5% et 25%, normalises a 100%
+  - Rationale genere en francais pour chaque theme
+  - L'utilisateur mappe ses ETFs aux themes dans target_portfolio.yaml
 - **Indicateurs FRED** (11) : CPI, Core CPI, Chomage, Fed Funds, Production Industrielle, Courbe de taux, Bilan Fed, Inscriptions chomage, Sentiment conso, Spread HY, PIB
 - **Indicateurs yfinance** (8) : US 10Y, VIX, EUR/USD, DXY, Or, Bitcoin, Cuivre, Petrole WTI
 - **Indicateurs ECB** (2) : Taux refi, IPC zone euro

@@ -29,13 +29,13 @@ def _load_aggregated() -> list[dict]:
 
 
 def _get_smart_allocation():
-    """Compute smart allocation from current macro outlook."""
+    """Compute smart theme allocation from current macro outlook."""
     macro = compute_macro_outlook()
     config = load_macro_config()
-    etf_universe = config.get("etf_universe", [])
-    if not etf_universe:
+    allocation_themes = config.get("allocation_themes", [])
+    if not allocation_themes:
         return None
-    return compute_smart_allocation(macro, etf_universe)
+    return compute_smart_allocation(macro, allocation_themes)
 
 
 @app.get("/portfolio")
@@ -272,24 +272,23 @@ def get_macro(refresh: bool = False):
 def get_target(mode: str = "smart"):
     """Target portfolio allocations.
 
-    mode: "smart" (macro-derived with rationale) or "static" (target_portfolio.yaml)
+    mode: "smart" (theme-based macro-derived with rationale) or "static" (target_portfolio.yaml)
     """
     if mode == "smart":
         smart = _get_smart_allocation()
-        if smart and smart.allocations:
-            result = load_target_portfolio(smart_allocation=smart)
-            rationale_map = {a.ticker: a.rationale for a in smart.allocations}
+        if smart and smart.themes:
             return {
-                "allocations": [
+                "themes": [
                     {
-                        "ticker": a.ticker,
-                        "name": a.name,
-                        "weight_pct": a.weight_pct,
-                        "rationale": rationale_map.get(a.ticker, ""),
+                        "id": t.id,
+                        "name_fr": t.name_fr,
+                        "type": t.type,
+                        "weight_pct": t.weight_pct,
+                        "rationale": t.rationale,
                     }
-                    for a in result.allocations
+                    for t in smart.themes
                 ],
-                "total_weight_pct": result.total_weight_pct,
+                "total_weight_pct": smart.total_weight_pct,
                 "method": "smart",
                 "outlook": smart.outlook,
                 "score": smart.score,
@@ -303,7 +302,6 @@ def get_target(mode: str = "smart"):
                 "ticker": a.ticker,
                 "name": a.name,
                 "weight_pct": a.weight_pct,
-                "rationale": "",
             }
             for a in result.allocations
         ],
@@ -313,17 +311,11 @@ def get_target(mode: str = "smart"):
 
 
 @app.get("/drift")
-def get_drift(mode: str = "smart"):
-    """Portfolio drift vs target allocations."""
+def get_drift():
+    """Portfolio drift vs static target allocations (target_portfolio.yaml)."""
     aggregated = _load_aggregated()
     enriched = enrich_positions(aggregated)
-
-    if mode == "smart":
-        smart = _get_smart_allocation()
-        target = load_target_portfolio(smart_allocation=smart)
-    else:
-        target = load_target_portfolio()
-
+    target = load_target_portfolio()
     result = compute_drift(enriched, target)
 
     return {

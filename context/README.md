@@ -74,16 +74,17 @@ Flux RSS finances et macro parses automatiquement par `macro.py` (via `feedparse
 
 **Configuration** : Les URLs RSS sont dans `macro_config.yaml` (section `news_sources`). Max 10 items par source, 50 au total, tries par date desc.
 
-### Univers ETF — Mapping Tickers
+### Themes d'Allocation — Scoring Macro
 
-Section `etf_universe` dans `macro_config.yaml` : 27 ETFs (8 detenus + 19 candidats) avec mapping :
-- `short` : ticker court (utilise dans les mega-trends)
-- `ticker` : ticker qualifie exchange (pour yfinance et le portefeuille)
-- `type` : geo, secteur, thematique
-- `sectors` : secteurs GICS associes
-- `aliases` : tickers alternatifs (optionnel)
+Section `allocation_themes` dans `macro_config.yaml` : 9 themes d'investissement, chacun avec :
 
-Utilise par `allocation.py` pour le scoring et l'allocation intelligente.
+- `id` : identifiant unique (ex: `defense`, `ia_tech`)
+- `name_fr` : nom d'affichage en francais
+- `type` : thematique, geo, ou secteur
+- `supporting_mega_trends` : liste des IDs de mega-trends qui supportent ce theme
+- `sectors` : secteurs GICS associes (pour l'ajustement sectoriel)
+
+L'allocation smart calcule un poids % par theme (pas par ETF). L'utilisateur mappe ses ETFs aux themes dans `target_portfolio.yaml`.
 
 ---
 
