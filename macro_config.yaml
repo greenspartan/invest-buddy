@@ -370,8 +370,14 @@ allocation_themes:
     supporting_mega_trends: ["rearm_europe", "repowereu", "investai", "nextgeneu"]
     sectors: []
 
-  - id: energie_uranium
-    name_fr: "Energie & Uranium"
+  - id: energie
+    name_fr: "Energie"
+    type: "thematique"
+    supporting_mega_trends: ["energie_geopolitique", "repowereu"]
+    sectors: ["Energy"]
+
+  - id: uranium
+    name_fr: "Uranium & Nucleaire"
     type: "thematique"
     supporting_mega_trends: ["repowereu", "energie_geopolitique"]
     sectors: ["Energy", "Utilities"]
@@ -394,8 +400,14 @@ allocation_themes:
     supporting_mega_trends: ["infra_transport", "nextgeneu", "repowereu"]
     sectors: ["Industrials", "Utilities"]
 
-  - id: or_bitcoin
-    name_fr: "Or & Bitcoin (couverture)"
+  - id: or
+    name_fr: "Or (couverture)"
+    type: "thematique"
+    supporting_mega_trends: ["shift_fed"]
+    sectors: []
+
+  - id: bitcoin
+    name_fr: "Bitcoin / Crypto"
     type: "thematique"
     supporting_mega_trends: ["shift_fed"]
     sectors: []

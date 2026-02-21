@@ -102,7 +102,7 @@ def _compute_risk_adjustment(theme_type: str, outlook_score: float) -> float:
 
 MIN_WEIGHT = 5.0
 MAX_WEIGHT = 25.0
-MAX_THEMES = 10
+MAX_THEMES = 12
 SCORE_THRESHOLD = 1.0  # minimum total_score to be included
 
 
