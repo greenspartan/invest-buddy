@@ -23,8 +23,8 @@
 - `target_portfolio.yaml` definit les poids cibles du portefeuille (editable manuellement)
 - `macro_outlook.yaml` est genere automatiquement par le backend (cache 6h, gitignore)
 - `news_cache.yaml` est genere automatiquement par le backend (cache 30min, gitignore)
-- `macro_config.yaml` definit les mega-trends, plans de relance, previsions sell-side, sources RSS et univers ETF (editable manuellement)
-- Streamlit appelle les endpoints et affiche les donnees (lecture seule, 7 onglets)
+- `macro_config.yaml` definit les mega-trends, plans de relance, previsions sell-side, sources RSS et themes d'allocation (editable manuellement)
+- Streamlit appelle les endpoints et affiche les donnees (lecture seule, 8 onglets)
 
 ## Modules Python (app/)
 - `portfolio.py` — chargement YAML + transactions + agregation lots/PRU + enrichissement prix + conversion EUR
@@ -32,8 +32,8 @@
 - `holdings.py` — top holdings ETF + agregation ponderation effective
 - `sectors.py` — exposition sectorielle GICS + agregation par ETF
 - `performance.py` — perf historique (prix + forex historiques, P&L %, drawdown)
-- `macro.py` — dashboard macro complet: 21 indicateurs (FRED/ECB/yfinance) + mega-trends + plans de relance + parser Lyn Alden + sell-side views + signaux sectoriels + scoring risk-on/risk-off + cache YAML + fil d'actualite RSS (feedparser, cache 30min)
-- `allocation.py` — moteur d'allocation thematique: scoring themes d'investissement depuis macro signals (mega-trends, secteurs, risk outlook) → poids % par theme + rationale FR. L'utilisateur mappe ses ETFs aux themes. Max 10 themes, seuil score 1.0, poids min 5% / max 25%
+- `macro.py` — dashboard macro complet: 21 indicateurs (FRED/ECB/yfinance) + mega-trends + plans de relance + parser Lyn Alden + sell-side views + signaux sectoriels + scoring risk-on/risk-off + cache YAML + fil d'actualite RSS (feedparser, cache 30min, classification par zone US/Europe/Tech/Energie/Geopolitique/Marches) + synthese macro multi-sources (6 bullets agreges depuis indicateurs, secteurs, sell-side, mega-trends, marches, Lyn Alden)
+- `allocation.py` — moteur d'allocation thematique: scoring themes d'investissement depuis macro signals (mega-trends, secteurs, risk outlook) → poids % par theme + rationale FR. L'utilisateur mappe ses ETFs aux themes. Max 12 themes, seuil score 1.0, poids min 5% / max 25%
 - `target.py` — allocation cible statique (target_portfolio.yaml, ETFs manuels) + calcul drift vs portefeuille live
 - `models.py` — modele SQLAlchemy Position
 - `database.py` — connexion PostgreSQL
@@ -44,8 +44,8 @@
 - GET /holdings/top?top_n=20 — top N positions sous-jacentes agreges
 - GET /sectors — exposition sectorielle (11 secteurs GICS)
 - GET /performance?period=ALL — perf historique (periodes: 1M, 3M, 6M, 1Y, YTD, ALL)
-- GET /macro?refresh=false — dashboard macro complet: indicateurs (21), mega-trends (13), plans de relance (12), sell-side views (2), Lyn Alden insights (8), signaux sectoriels (11+) + outlook + fil d'actualite RSS (cache YAML 6h pour macro, 30min pour news, refresh=true force re-fetch)
-- GET /target?mode=smart — allocation thematique deduite de l'analyse macro (9 themes, rationale FR par ligne). mode=static pour ETFs depuis target_portfolio.yaml
+- GET /macro?refresh=false — dashboard macro complet: indicateurs (21), mega-trends (14), plans de relance (13), sell-side views (2), Lyn Alden insights (8), signaux sectoriels (11+) + outlook + synthese macro multi-sources + fil d'actualite RSS avec classification par zone (cache YAML 6h pour macro, 30min pour news, refresh=true force re-fetch)
+- GET /target?mode=smart — allocation thematique deduite de l'analyse macro (11 themes, rationale FR par ligne). mode=static pour ETFs depuis target_portfolio.yaml
 - GET /drift — drift portefeuille live vs target_portfolio.yaml (allocation statique par ETF) + suggestions rebalancement
 - GET /health — health check
 
@@ -61,14 +61,17 @@
   - 12 plans de relance (5 US + 7 EU) avec statut, montants, secteurs
   - Previsions sell-side (JPMorgan, BofA) avec forecasts, themes, risques
   - 6 sources RSS (Reuters, Les Echos, Zone Bourse, Investing.com, BCE, Fed)
-  - 9 themes d'allocation (allocation_themes) avec mega-trends associes
+  - 11 themes d'allocation (allocation_themes) avec mega-trends associes
   - Relu a chaque appel /macro (pas de restart necessaire)
 - **Allocation thematique** : allocation.py calcule les poids par theme d'investissement
-  - Themes: Defense, IA & Tech, Semiconducteurs, Europe, Energie & Uranium, Asie/Pacifique, Emergents, Infrastructure, Or & Bitcoin
+  - Themes: Defense, IA & Tech, Semiconducteurs, Europe, Energie, Uranium & Nucleaire, Asie/Pacifique ex-Japon, Emergents, Infrastructure, Or, Bitcoin/Crypto
   - Score = trend_score (force mega-trends) + sector_adjustment (bullish/bearish) + risk_adjustment (risk-on/off × type)
-  - Seuil minimum score 1.0, max 10 themes, poids entre 5% et 25%, normalises a 100%
+  - Seuil minimum score 1.0, max 12 themes, poids entre 5% et 25%, normalises a 100%
   - Rationale genere en francais pour chaque theme
   - L'utilisateur mappe ses ETFs aux themes dans target_portfolio.yaml
+- **Synthese macro** : `_compute_macro_synthesis()` dans macro.py genere 6 bullets FR agreges depuis toutes les sources (indicateurs, secteurs, sell-side, mega-trends, marches, Lyn Alden). Remplace l'ancien affichage "Themes macro (Lyn Alden)" qui ne montrait que les key_points du dernier article
+- **Fil d'actualite RSS** : chaque news est classifiee par zone (US/Europe/Tech/Energie/Geopolitique/Marches/Autre) via `_classify_news_zone()` (mots-cles dans titre+summary). News low-value filtrees par `_is_impactful_news()`. Affiche dans un onglet News dedie (sorti de l'onglet Macro)
+- **Onglets Streamlit** (8) : Macro / News / Allocation Cible / Positions / Top 20 Holdings / Secteurs / Performance / Rebalancement
 - **Indicateurs FRED** (11) : CPI, Core CPI, Chomage, Fed Funds, Production Industrielle, Courbe de taux, Bilan Fed, Inscriptions chomage, Sentiment conso, Spread HY, PIB
 - **Indicateurs yfinance** (8) : US 10Y, VIX, EUR/USD, DXY, Or, Bitcoin, Cuivre, Petrole WTI
 - **Indicateurs ECB** (2) : Taux refi, IPC zone euro

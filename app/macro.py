@@ -298,6 +298,7 @@ class NewsItem:
     url: str
     category: str  # "macro", "marches"
     summary: str = ""
+    zone: str = ""  # "US", "Europe", "Tech", "Energie", "Geopolitique", "Marches", "Autre"
 
 
 @dataclass
@@ -874,6 +875,93 @@ def _clean_html(text: str) -> str:
     return _HTML_TAG_RE.sub("", text).strip()
 
 
+# Keyword-based news zone classification
+_NEWS_ZONE_KEYWORDS: dict[str, list[str]] = {
+    "US": [
+        "trump", "fed ", "federal reserve", "fomc", "u.s.", "united states",
+        "congress", "senate", "white house", "wall street", "s&p 500", "nasdaq",
+        "dow jones", "treasury", "sec ", "dollar", "chips act", "ira ",
+        "stargate", "nvidia", "apple", "microsoft", "amazon", "google",
+        "meta ", "tesla", "inflation us",
+    ],
+    "Europe": [
+        "ecb", "bce", "lagarde", "europe", "eurozone", "zone euro", "eu ",
+        "european", "germany", "france", "merz", "macron",
+        "rearm europe", "safe ", "edip", "nextgen", "repowereu",
+        "investai", "tsmc dresde", "euro ", "eur/", "bund",
+        "commission europeenne", "parlement europeen",
+    ],
+    "Tech": [
+        " ai ", "artificial intelligence", "intelligence artificielle",
+        "semiconductor", "chip ", "nvidia", "tsmc", "asml",
+        "openai", "deepseek", "chatgpt", "data center",
+        "cyber", "software", "saas", "cloud", "robot",
+        "big tech", "capex", "hyperscaler",
+    ],
+    "Energie": [
+        "oil", "petrole", "brent", "wti", "opec", "energy", "energie",
+        "uranium", "nuclear", "nucleaire", "lng", "gas ", "gaz ",
+        "renewable", "renouvelable", "solar", "eolien", "hydrogene",
+        "pipeline", "clean energy",
+    ],
+    "Geopolitique": [
+        "ukraine", "russia", "russie", "china", "chine", "taiwan",
+        "tariff", "tarif", "trade war", "guerre commerciale",
+        "sanction", "geopolit", "missile", "defense", "military",
+        "nato", "otan", "war ", "guerre ", "conflict",
+        "middle east", "moyen-orient", "iran", "israel",
+    ],
+    "Marches": [
+        "market", "marche", "stock", "action ", "bond ", "obligation",
+        "yield", "rendement", "volatil", "vix", "rally", "selloff",
+        "correction", "bull", "bear", "ipo ", "earnings", "resultat",
+        "buyback", "dividend", "valuation",
+        "gold", "or ", "bitcoin", "btc", "copper", "cuivre",
+    ],
+}
+
+_LOW_VALUE_PATTERNS = [
+    "announces approval of application",
+    "enforcement action",
+    "insurance policy advisory",
+    "egrpra",
+    "digital euro",
+    "cooperativa de ahorro",
+    "community development financial",
+    "bank merger",
+    "supervisory assessment",
+]
+
+
+def _classify_news_zone(title: str, summary: str, source: str) -> str:
+    """Classify a news item into a thematic/geographic zone using keywords."""
+    text = f" {title} {summary} ".lower()
+
+    # Source-based hints
+    if source in ("BCE", "ECB"):
+        return "Europe"
+    if source in ("Fed", "Federal Reserve"):
+        return "US"
+
+    # Keyword scoring
+    scores: dict[str, int] = {}
+    for zone, keywords in _NEWS_ZONE_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw.lower() in text)
+        if score > 0:
+            scores[zone] = score
+
+    if not scores:
+        return "Autre"
+
+    return max(scores, key=scores.get)
+
+
+def _is_impactful_news(item: NewsItem) -> bool:
+    """Filter out low-impact administrative news items."""
+    combined = f"{item.title} {item.summary}".lower()
+    return not any(pattern in combined for pattern in _LOW_VALUE_PATTERNS)
+
+
 def _parse_rss_date(entry) -> str:
     """Extract and normalize date from an RSS entry."""
     for attr in ("published_parsed", "updated_parsed"):
@@ -906,17 +994,22 @@ def _fetch_news(config: dict) -> list[NewsItem]:
                 raw_summary = entry.get("summary", entry.get("description", ""))
                 summary = _clean_html(raw_summary)[:200]
 
+                source_name = source.get("name", source.get("id", "?"))
                 items.append(NewsItem(
                     title=entry.get("title", "Sans titre"),
-                    source=source.get("name", source.get("id", "?")),
+                    source=source_name,
                     date=pub_date,
                     url=entry.get("link", ""),
                     category=source.get("category", "macro"),
                     summary=summary,
+                    zone=_classify_news_zone(
+                        entry.get("title", ""), summary, source_name,
+                    ),
                 ))
         except Exception:
             continue
 
+    items = [i for i in items if _is_impactful_news(i)]
     items.sort(key=lambda x: x.date, reverse=True)
     return items[:50]
 
@@ -959,12 +1052,125 @@ def _save_news_cache(items: list[NewsItem]) -> None:
             {
                 "title": n.title, "source": n.source, "date": n.date,
                 "url": n.url, "category": n.category, "summary": n.summary,
+                "zone": n.zone,
             }
             for n in items
         ],
     }
     with open(NEWS_CACHE_PATH, "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+# ---------------------------------------------------------------------------
+# Macro synthesis (multi-source)
+# ---------------------------------------------------------------------------
+
+_OUTLOOK_LABELS_FR = {
+    "risk-on": "risk-on",
+    "moderate-risk-on": "risk-on modere",
+    "neutral": "neutre",
+    "moderate-risk-off": "risk-off modere",
+    "risk-off": "risk-off",
+}
+
+_CHANGE_ARROWS = {"up": "\u2191", "down": "\u2193", "=": "="}
+
+
+def _compute_macro_synthesis(
+    outlook: str,
+    score: float,
+    indicators: list[MacroIndicator],
+    mega_trends: list[MegaTrend],
+    sector_signals: list[SectorSignal],
+    sell_side_views: list[SellSideView],
+    lyn_alden_insights: list[LynAldenArticle],
+) -> list[str]:
+    """Compute a concise multi-source macro synthesis (5-6 bullets in French)."""
+    synthesis: list[str] = []
+    ind_by_key = {ind.key: ind for ind in indicators if ind.value is not None}
+
+    # 1. Outlook + key indicators
+    label = _OUTLOOK_LABELS_FR.get(outlook, "neutre")
+    ctx = []
+    cpi = ind_by_key.get("us_cpi")
+    if cpi:
+        d = "en baisse" if cpi.trend == "down" else ("en hausse" if cpi.trend == "up" else "stable")
+        ctx.append(f"inflation {d} ({cpi.value}%)")
+    fed = ind_by_key.get("fed_funds")
+    if fed:
+        d = "en baisse" if fed.trend == "down" else ("en hausse" if fed.trend == "up" else "en pause")
+        ctx.append(f"Fed {d} ({fed.value}%)")
+    bs = ind_by_key.get("fed_balance_sheet")
+    if bs:
+        d = "en expansion" if bs.trend == "up" else ("en contraction" if bs.trend == "down" else "stable")
+        ctx.append(f"liquidite {d}")
+    vix = ind_by_key.get("vix")
+    if vix:
+        if vix.value < 15:
+            ctx.append(f"VIX bas ({vix.value:.0f})")
+        elif vix.value > 25:
+            ctx.append(f"VIX eleve ({vix.value:.0f})")
+    b1 = f"Contexte macro {label} ({score:+.2f})"
+    if ctx:
+        b1 += f": {', '.join(ctx)}"
+    synthesis.append(b1)
+
+    # 2. Sector signals
+    bullish = [s.sector for s in sector_signals if s.signal == "bullish"]
+    bearish = [s.sector for s in sector_signals if s.signal == "bearish"]
+    parts = []
+    if bullish:
+        parts.append(f"porteurs: {', '.join(bullish[:4])}")
+    if bearish:
+        parts.append(f"sous pression: {', '.join(bearish[:3])}")
+    if parts:
+        synthesis.append(f"Secteurs {'. '.join(parts)}")
+
+    # 3. Sell-side consensus
+    if sell_side_views:
+        ss_parts = []
+        for sv in sell_side_views:
+            fc = sv.forecasts if isinstance(sv.forecasts, dict) else {}
+            sp = fc.get("sp500_target", "")
+            eps = fc.get("sp500_eps_growth", "")
+            if sp:
+                ss_parts.append(f"S&P 500 cible {sp} ({sv.source})")
+            elif eps:
+                ss_parts.append(f"EPS {eps} ({sv.source})")
+        if ss_parts:
+            synthesis.append(f"Consensus sell-side: {', '.join(ss_parts[:2])}")
+
+    # 4. Dominant mega-trends (force >= 2)
+    strong = [mt for mt in mega_trends if mt.force >= 2]
+    if strong:
+        t_strs = []
+        for mt in sorted(strong, key=lambda t: t.force, reverse=True)[:4]:
+            arrow = _CHANGE_ARROWS.get(mt.change, "=")
+            t_strs.append(f"{mt.name_fr} ({mt.force}{arrow})")
+        synthesis.append(f"Mega-trends: {', '.join(t_strs)}")
+
+    # 5. Key markets snapshot
+    gold = ind_by_key.get("gold")
+    btc = ind_by_key.get("btc")
+    dxy = ind_by_key.get("dxy")
+    m_parts = []
+    if gold:
+        m_parts.append(f"Or ${gold.value:,.0f}")
+    if btc:
+        m_parts.append(f"BTC ${btc.value:,.0f}")
+    if dxy:
+        d = "en baisse" if dxy.trend == "down" else ("en hausse" if dxy.trend == "up" else "stable")
+        m_parts.append(f"Dollar {d} ({dxy.value:.1f})")
+    if m_parts:
+        synthesis.append(f"Marches: {', '.join(m_parts)}")
+
+    # 6. Latest Lyn Alden takeaway
+    if lyn_alden_insights:
+        latest = lyn_alden_insights[0]
+        if latest.key_points:
+            synthesis.append(f"Lyn Alden ({latest.date}): {latest.key_points[0]}")
+
+    return synthesis
 
 
 # ---------------------------------------------------------------------------
@@ -1030,11 +1236,16 @@ def compute_macro_outlook(force_refresh: bool = False) -> MacroOutlook:
     # Compute sector signals
     sector_signals = _compute_sector_signals(all_indicators, mega_trends)
 
-    # Populate themes from latest Lyn Alden article
-    themes = []
-    if lyn_alden_insights:
-        latest = lyn_alden_insights[0]
-        themes = latest.key_points[:5]
+    # Compute multi-source macro synthesis
+    themes = _compute_macro_synthesis(
+        outlook=outlook_label,
+        score=score,
+        indicators=all_indicators,
+        mega_trends=mega_trends,
+        sector_signals=sector_signals,
+        sell_side_views=sell_side_views,
+        lyn_alden_insights=lyn_alden_insights,
+    )
 
     result = MacroOutlook(
         outlook=outlook_label,

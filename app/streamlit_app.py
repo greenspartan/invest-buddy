@@ -98,11 +98,22 @@ col4.metric("P&L %", f"{total['pnl_pct']:+.2f}%")
 st.divider()
 
 # ---------------------------------------------------------------------------
+# Fetch macro data (shared by Macro + News tabs)
+# ---------------------------------------------------------------------------
+
+try:
+    macro_data = fetch_macro(refresh=st.session_state.get("_macro_refresh", False))
+    if st.session_state.get("_macro_refresh"):
+        st.session_state["_macro_refresh"] = False
+except Exception as e:
+    macro_data = None
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_positions, tab_holdings, tab_sectors, tab_performance, tab_macro, tab_target, tab_drift = st.tabs(
-    ["Positions", "Top 20 Holdings", "Secteurs", "Performance", "Macro", "Allocation Cible", "Rebalancement"]
+tab_macro, tab_news, tab_target, tab_positions, tab_holdings, tab_sectors, tab_performance, tab_drift = st.tabs(
+    ["Macro", "News", "Allocation Cible", "Positions", "Top 20 Holdings", "Secteurs", "Performance", "Rebalancement"]
 )
 
 # === Tab 1: Positions =====================================================
@@ -337,39 +348,52 @@ _CATEGORY_ORDER = [
 ]
 
 
-_CATEGORY_LABELS = {"macro": "Macro", "marches": "Marches"}
+_ZONE_ICONS = {
+    "US": "\U0001f1fa\U0001f1f8",
+    "Europe": "\U0001f1ea\U0001f1fa",
+    "Tech": "\U0001f4bb",
+    "Energie": "\u26a1",
+    "Geopolitique": "\U0001f30d",
+    "Marches": "\U0001f4c8",
+    "Autre": "\U0001f4f0",
+}
+_ZONE_ORDER = ["US", "Europe", "Tech", "Energie", "Geopolitique", "Marches", "Autre"]
 
 
-def _render_news_feed(macro_data):
-    """Render the live news feed section (RSS headlines)."""
-    st.subheader("Fil d'Actualite Macro")
+def _render_news_tab(macro_data):
+    """Render the News tab with items organized by thematic/geographic zone."""
     news = macro_data.get("news_feed", [])
     if not news:
         st.info("Aucune actualite disponible. Verifiez la configuration des flux RSS dans macro_config.yaml.")
         return
 
-    categories = sorted(set(n["category"] for n in news))
-    if len(categories) > 1:
-        selected = st.multiselect(
-            "Filtrer par categorie",
-            categories,
-            default=categories,
-            format_func=lambda c: _CATEGORY_LABELS.get(c, c),
-        )
-    else:
-        selected = categories
+    st.caption(f"{len(news)} articles disponibles")
 
-    filtered = [n for n in news if n["category"] in selected]
+    # Group by zone
+    by_zone: dict[str, list] = {}
+    for n in news:
+        zone = n.get("zone", "Autre") or "Autre"
+        by_zone.setdefault(zone, []).append(n)
 
-    for n in filtered[:20]:
-        cols = st.columns([1, 5])
-        with cols[0]:
-            st.caption(n["date"][:10])
-            st.caption(f"*{n['source']}*")
-        with cols[1]:
-            st.markdown(f"[**{n['title']}**]({n['url']})")
-            if n.get("summary"):
-                st.caption(n["summary"][:150])
+    for zone in _ZONE_ORDER:
+        items = by_zone.get(zone, [])
+        if not items:
+            continue
+
+        icon = _ZONE_ICONS.get(zone, "\U0001f4f0")
+        st.subheader(f"{icon} {zone}")
+
+        for n in items[:8]:
+            cols = st.columns([1, 5])
+            with cols[0]:
+                st.caption(n["date"][:10])
+                st.caption(f"*{n['source']}*")
+            with cols[1]:
+                st.markdown(f"[**{n['title']}**]({n['url']})")
+                if n.get("summary"):
+                    st.caption(n["summary"][:150])
+
+        st.divider()
 
 
 def _render_macro_outlook(macro_data):
@@ -384,7 +408,7 @@ def _render_macro_outlook(macro_data):
         f"Derniere MAJ: {macro_data['last_updated']}"
     )
     if macro_data.get("themes"):
-        st.markdown("**Themes macro (Lyn Alden):**")
+        st.markdown("**Synthese macro:**")
         for theme in macro_data["themes"]:
             st.markdown(f"- {theme}")
 
@@ -584,20 +608,13 @@ with tab_macro:
 
     col_refresh, _ = st.columns([1, 5])
     with col_refresh:
-        do_refresh = st.button("Rafraichir les donnees")
-
-    try:
-        if do_refresh:
+        if st.button("Rafraichir les donnees"):
             fetch_macro.clear()
-        macro_data = fetch_macro(refresh=do_refresh)
-    except Exception as e:
-        st.warning(f"Impossible de recuperer les donnees macro: {e}")
-        macro_data = None
+            st.session_state["_macro_refresh"] = True
+            st.rerun()
 
     if macro_data:
         _render_macro_outlook(macro_data)
-        st.divider()
-        _render_news_feed(macro_data)
         st.divider()
         _render_mega_trends(macro_data)
         st.divider()
@@ -610,6 +627,15 @@ with tab_macro:
         _render_indicators(macro_data)
         st.divider()
         _render_sector_signals(macro_data)
+    else:
+        st.warning("Impossible de recuperer les donnees macro.")
+
+# === Tab 2: News =============================================================
+with tab_news:
+    if macro_data:
+        _render_news_tab(macro_data)
+    else:
+        st.info("Donnees macro non disponibles.")
 
 # === Tab 6: Allocation Cible ===============================================
 with tab_target:

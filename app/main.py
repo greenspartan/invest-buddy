@@ -262,6 +262,7 @@ def get_macro(refresh: bool = False):
                 "url": n.url,
                 "category": n.category,
                 "summary": n.summary,
+                "zone": n.zone,
             }
             for n in news
         ],
