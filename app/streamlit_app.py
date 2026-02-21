@@ -58,15 +58,15 @@ def fetch_macro(refresh: bool = False):
 
 
 @st.cache_data(ttl=300)
-def fetch_target():
-    resp = requests.get(TARGET_URL, timeout=15)
+def fetch_target(mode: str = "smart"):
+    resp = requests.get(TARGET_URL, params={"mode": mode}, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
 
 @st.cache_data(ttl=300)
-def fetch_drift():
-    resp = requests.get(DRIFT_URL, timeout=30)
+def fetch_drift(mode: str = "smart"):
+    resp = requests.get(DRIFT_URL, params={"mode": mode}, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -337,6 +337,41 @@ _CATEGORY_ORDER = [
 ]
 
 
+_CATEGORY_LABELS = {"macro": "Macro", "marches": "Marches"}
+
+
+def _render_news_feed(macro_data):
+    """Render the live news feed section (RSS headlines)."""
+    st.subheader("Fil d'Actualite Macro")
+    news = macro_data.get("news_feed", [])
+    if not news:
+        st.info("Aucune actualite disponible. Verifiez la configuration des flux RSS dans macro_config.yaml.")
+        return
+
+    categories = sorted(set(n["category"] for n in news))
+    if len(categories) > 1:
+        selected = st.multiselect(
+            "Filtrer par categorie",
+            categories,
+            default=categories,
+            format_func=lambda c: _CATEGORY_LABELS.get(c, c),
+        )
+    else:
+        selected = categories
+
+    filtered = [n for n in news if n["category"] in selected]
+
+    for n in filtered[:20]:
+        cols = st.columns([1, 5])
+        with cols[0]:
+            st.caption(n["date"][:10])
+            st.caption(f"*{n['source']}*")
+        with cols[1]:
+            st.markdown(f"[**{n['title']}**]({n['url']})")
+            if n.get("summary"):
+                st.caption(n["summary"][:150])
+
+
 def _render_macro_outlook(macro_data):
     """Section 1: Outlook banner."""
     outlook = macro_data["outlook"]
@@ -562,6 +597,8 @@ with tab_macro:
     if macro_data:
         _render_macro_outlook(macro_data)
         st.divider()
+        _render_news_feed(macro_data)
+        st.divider()
         _render_mega_trends(macro_data)
         st.divider()
         _render_investment_plans(macro_data)
@@ -577,29 +614,63 @@ with tab_macro:
 # === Tab 6: Allocation Cible ===============================================
 with tab_target:
 
+    target_mode = st.radio(
+        "Mode d'allocation",
+        ["Smart (macro-driven)", "Statique (YAML)"],
+        index=0,
+        horizontal=True,
+    )
+    mode_param = "smart" if "Smart" in target_mode else "static"
+
     try:
-        target_data = fetch_target()
+        target_data = fetch_target(mode=mode_param)
     except Exception as e:
         st.warning(f"Impossible de recuperer l'allocation cible: {e}")
         target_data = None
 
     if target_data and target_data["allocations"]:
+        method = target_data.get("method", "static")
+
+        if method == "smart":
+            outlook = target_data.get("outlook", "neutral")
+            score = target_data.get("score", 0.0)
+            cfg = _OUTLOOK_CONFIG.get(outlook, _OUTLOOK_CONFIG["neutral"])
+            st.caption(
+                f"Allocation generee depuis l'analyse macro "
+                f"({cfg['icon']} {cfg['label']}, score: {score:+.3f})"
+            )
+
         total_w = target_data["total_weight_pct"]
         if abs(total_w - 100.0) > 0.01:
             st.warning(f"La somme des poids est de {total_w:.1f}% (devrait etre 100%)")
 
         df_target = pd.DataFrame(target_data["allocations"])
-        df_target.columns = ["Ticker", "Nom", "Poids cible (%)"]
+        has_rationale = method == "smart" and "rationale" in df_target.columns
 
-        st.dataframe(
-            df_target.style.format({"Poids cible (%)": "{:.1f}%"}),
-            use_container_width=True,
-            hide_index=True,
-        )
+        if has_rationale:
+            df_target = df_target[["ticker", "name", "weight_pct", "rationale"]]
+            df_target.columns = ["Ticker", "Nom", "Poids cible (%)", "Raison"]
+            st.dataframe(
+                df_target.style.format({"Poids cible (%)": "{:.1f}%"}),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Raison": st.column_config.TextColumn(width="large"),
+                },
+            )
+        else:
+            df_target = df_target[["ticker", "name", "weight_pct"]]
+            df_target.columns = ["Ticker", "Nom", "Poids cible (%)"]
+            st.dataframe(
+                df_target.style.format({"Poids cible (%)": "{:.1f}%"}),
+                use_container_width=True,
+                hide_index=True,
+            )
 
-        # Pie chart (same style as sectors tab)
+        # Pie chart
+        df_pie = df_target[["Nom", "Poids cible (%)"]].copy()
         fig_target = px.pie(
-            df_target,
+            df_pie,
             names="Nom",
             values="Poids cible (%)",
             hole=0.4,
@@ -608,7 +679,7 @@ with tab_target:
             sort=False,
             textinfo="label+percent",
             textposition="outside",
-            pull=[0.03] * len(df_target),
+            pull=[0.03] * len(df_pie),
             hovertemplate="<b>%{label}</b><br>Poids: %{value:.1f}%<extra></extra>",
         )
         fig_target.update_layout(
@@ -619,13 +690,22 @@ with tab_target:
         st.plotly_chart(fig_target, use_container_width=True)
 
     elif target_data:
-        st.info("Aucune allocation cible definie. Editez target_portfolio.yaml.")
+        st.info("Aucune allocation cible definie. Editez target_portfolio.yaml ou configurez etf_universe dans macro_config.yaml.")
 
 # === Tab 7: Rebalancement ==================================================
 with tab_drift:
 
+    drift_mode = st.radio(
+        "Mode cible",
+        ["Smart (macro-driven)", "Statique (YAML)"],
+        index=0,
+        horizontal=True,
+        key="drift_mode",
+    )
+    drift_mode_param = "smart" if "Smart" in drift_mode else "static"
+
     try:
-        drift_data = fetch_drift()
+        drift_data = fetch_drift(mode=drift_mode_param)
     except Exception as e:
         st.warning(f"Impossible de recuperer le drift: {e}")
         drift_data = None

@@ -1,18 +1,24 @@
 """Target portfolio allocation and drift computation.
 
-Self-contained module: depends only on pyyaml and the standard library.
-Reads target_portfolio.yaml for target weights, computes drift vs live
-enriched positions.
+Supports two modes:
+- static: reads target_portfolio.yaml (manual weights)
+- smart: accepts a SmartAllocationResult from allocation.py (macro-derived weights)
+
+Drift computation is mode-agnostic (works with any TargetPortfolioResult).
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import yaml
 
 from app.config import TARGET_PATH
+
+if TYPE_CHECKING:
+    from app.allocation import SmartAllocationResult
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +62,8 @@ class DriftResult:
 # Target loading
 # ---------------------------------------------------------------------------
 
-def load_target_portfolio() -> TargetPortfolioResult:
-    """Load target_portfolio.yaml and return parsed allocations."""
+def _load_static_target() -> TargetPortfolioResult:
+    """Load target_portfolio.yaml and return parsed allocations (static mode)."""
     if not os.path.exists(TARGET_PATH):
         return TargetPortfolioResult()
 
@@ -79,6 +85,32 @@ def load_target_portfolio() -> TargetPortfolioResult:
         allocations=allocations,
         total_weight_pct=round(total, 2),
     )
+
+
+def load_target_portfolio(
+    smart_allocation: SmartAllocationResult | None = None,
+) -> TargetPortfolioResult:
+    """Load target allocations (smart or static).
+
+    If smart_allocation is provided and has allocations, use it.
+    Otherwise, fall back to static target_portfolio.yaml.
+    """
+    if smart_allocation and smart_allocation.allocations:
+        allocations = [
+            TargetAllocation(
+                ticker=a.ticker,
+                name=a.name,
+                weight_pct=a.weight_pct,
+            )
+            for a in smart_allocation.allocations
+        ]
+        total = sum(a.weight_pct for a in allocations)
+        return TargetPortfolioResult(
+            allocations=allocations,
+            total_weight_pct=round(total, 2),
+        )
+
+    return _load_static_target()
 
 
 # ---------------------------------------------------------------------------

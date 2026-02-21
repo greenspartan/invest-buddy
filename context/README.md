@@ -59,6 +59,34 @@ Syntheses structurees des outlooks annuels des grandes banques.
 |---------|------|---------|
 | `ETF_Reporting_2026-02-11.md` | 11/02/2026 | Reporting complet : macro, positions, mega-trends, plans de relance, allocation cible. Sert de modele de reference pour le dashboard macro. |
 
+### Fil d'Actualite RSS — Sources en temps reel
+
+Flux RSS finances et macro parses automatiquement par `macro.py` (via `feedparser`). Cache dans `news_cache.yaml` (TTL 30 min, gitignore).
+
+| Source | Categorie | Description |
+|--------|-----------|-------------|
+| Reuters (via Google News) | macro | Actualites business internationales |
+| Les Echos | marches | Finance et marches francais/europeens |
+| Zone Bourse | marches | Actualites boursieres francophones |
+| Investing.com | macro | News marches internationaux |
+| BCE | macro | Communiques de presse Banque Centrale Europeenne |
+| Fed | macro | Communiques de presse Federal Reserve |
+
+**Configuration** : Les URLs RSS sont dans `macro_config.yaml` (section `news_sources`). Max 10 items par source, 50 au total, tries par date desc.
+
+### Univers ETF — Mapping Tickers
+
+Section `etf_universe` dans `macro_config.yaml` : 27 ETFs (8 detenus + 19 candidats) avec mapping :
+- `short` : ticker court (utilise dans les mega-trends)
+- `ticker` : ticker qualifie exchange (pour yfinance et le portefeuille)
+- `type` : geo, secteur, thematique
+- `sectors` : secteurs GICS associes
+- `aliases` : tickers alternatifs (optionnel)
+
+Utilise par `allocation.py` pour le scoring et l'allocation intelligente.
+
+---
+
 ## Ajout de nouvelles sources
 
 ### Ajouter un article Lyn Alden

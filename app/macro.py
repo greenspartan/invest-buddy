@@ -5,13 +5,15 @@ Self-contained module that fetches macro indicators from multiple sources:
   Fed Balance Sheet, Initial Claims, Consumer Sentiment, HY Spread, GDP)
 - yfinance (market: US 10Y yield, VIX, EUR/USD, DXY, Gold, BTC, Copper, Oil)
 - ECB Data Portal (EU: Main Refi Rate, EUR CPI HICP)
+- RSS feeds (news from Reuters, Les Echos, Zone Bourse, Investing.com, BCE, Fed)
 
 Additional context loaded from local files:
-- macro_config.yaml: mega-trends, investment plans, sell-side views
+- macro_config.yaml: mega-trends, investment plans, sell-side views, news sources, ETF universe
 - context/macro/Lyn Alden/*.md: Lyn Alden premium article summaries
 - context/macro/sell-side/*.md: sell-side research summaries (JPMorgan, BofA)
 
 Results are cached in macro_outlook.yaml (valid 6 hours).
+News feed cached separately in news_cache.yaml (valid 30 min).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+import feedparser
 import requests
 import yaml
 import yfinance as yf
@@ -37,7 +40,9 @@ from app.config import FRED_API_KEY, MACRO_CONFIG_PATH, LYN_ALDEN_DIR, SELL_SIDE
 # ---------------------------------------------------------------------------
 
 MACRO_OUTLOOK_PATH = "macro_outlook.yaml"
+NEWS_CACHE_PATH = "news_cache.yaml"
 CACHE_TTL_SECONDS = 6 * 3600  # 6 hours
+NEWS_CACHE_TTL_SECONDS = 30 * 60  # 30 minutes
 
 FRED_BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
 ECB_BASE_URL = "https://data-api.ecb.europa.eu/service/data"
@@ -286,6 +291,16 @@ class SectorSignal:
 
 
 @dataclass
+class NewsItem:
+    title: str
+    source: str  # "Reuters", "Les Echos", etc.
+    date: str  # ISO date
+    url: str
+    category: str  # "macro", "marches"
+    summary: str = ""
+
+
+@dataclass
 class MacroOutlook:
     outlook: str = "neutral"
     score: float = 0.0
@@ -457,7 +472,7 @@ def _fetch_all_yfinance() -> dict[str, MacroIndicator]:
 # Macro config loader (mega-trends, plans, sell-side views)
 # ---------------------------------------------------------------------------
 
-def _load_macro_config() -> dict:
+def load_macro_config() -> dict:
     """Load macro_config.yaml (mega-trends + investment plans + sell-side views)."""
     if not os.path.exists(MACRO_CONFIG_PATH):
         return {"mega_trends": [], "investment_plans": {"us": [], "eu": []}, "sell_side_views": []}
@@ -848,6 +863,111 @@ def _compute_sector_signals(
 
 
 # ---------------------------------------------------------------------------
+# News feed (RSS)
+# ---------------------------------------------------------------------------
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _clean_html(text: str) -> str:
+    """Strip HTML tags from text."""
+    return _HTML_TAG_RE.sub("", text).strip()
+
+
+def _parse_rss_date(entry) -> str:
+    """Extract and normalize date from an RSS entry."""
+    for attr in ("published_parsed", "updated_parsed"):
+        parsed = getattr(entry, attr, None)
+        if parsed:
+            try:
+                return datetime.date(parsed.tm_year, parsed.tm_mon, parsed.tm_mday).isoformat()
+            except Exception:
+                pass
+    for attr in ("published", "updated"):
+        raw = getattr(entry, attr, None)
+        if raw:
+            return raw[:10]
+    return datetime.date.today().isoformat()
+
+
+def _fetch_news(config: dict) -> list[NewsItem]:
+    """Fetch and parse RSS feeds from configured news sources."""
+    sources = config.get("news_sources", [])
+    items: list[NewsItem] = []
+
+    for source in sources:
+        url = source.get("url", "")
+        if not url:
+            continue
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:10]:
+                pub_date = _parse_rss_date(entry)
+                raw_summary = entry.get("summary", entry.get("description", ""))
+                summary = _clean_html(raw_summary)[:200]
+
+                items.append(NewsItem(
+                    title=entry.get("title", "Sans titre"),
+                    source=source.get("name", source.get("id", "?")),
+                    date=pub_date,
+                    url=entry.get("link", ""),
+                    category=source.get("category", "macro"),
+                    summary=summary,
+                ))
+        except Exception:
+            continue
+
+    items.sort(key=lambda x: x.date, reverse=True)
+    return items[:50]
+
+
+def get_news_feed(force_refresh: bool = False) -> list[NewsItem]:
+    """Public function to get news feed (with 30-min YAML cache)."""
+    if not force_refresh and os.path.exists(NEWS_CACHE_PATH):
+        cached = _load_cached_news()
+        if cached is not None:
+            return cached
+
+    config = load_macro_config()
+    items = _fetch_news(config)
+    _save_news_cache(items)
+    return items
+
+
+def _load_cached_news() -> list[NewsItem] | None:
+    """Load news_cache.yaml if it exists and is less than 30 min old."""
+    try:
+        with open(NEWS_CACHE_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        last_updated = data.get("last_updated", "")
+        if not last_updated:
+            return None
+        updated_dt = datetime.datetime.fromisoformat(last_updated)
+        age = datetime.datetime.now() - updated_dt
+        if age.total_seconds() >= NEWS_CACHE_TTL_SECONDS:
+            return None
+        return [NewsItem(**item) for item in data.get("items", [])]
+    except Exception:
+        return None
+
+
+def _save_news_cache(items: list[NewsItem]) -> None:
+    """Save news items to news_cache.yaml."""
+    data = {
+        "last_updated": datetime.datetime.now().isoformat(timespec="seconds"),
+        "items": [
+            {
+                "title": n.title, "source": n.source, "date": n.date,
+                "url": n.url, "category": n.category, "summary": n.summary,
+            }
+            for n in items
+        ],
+    }
+    with open(NEWS_CACHE_PATH, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+# ---------------------------------------------------------------------------
 # Main computation + YAML cache
 # ---------------------------------------------------------------------------
 
@@ -899,7 +1019,7 @@ def compute_macro_outlook(force_refresh: bool = False) -> MacroOutlook:
     outlook_label, score = _compute_outlook(all_indicators)
 
     # Load config (mega-trends, investment plans, sell-side views)
-    config = _load_macro_config()
+    config = load_macro_config()
     mega_trends = _parse_mega_trends(config)
     investment_plans = _parse_investment_plans(config)
     sell_side_views = _parse_sell_side_views(config)

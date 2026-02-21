@@ -10,4 +10,5 @@ venv/
 .DS_Store
 conversation-*
 macro_outlook.yaml
+news_cache.yaml
 context/**/*.pdf
