@@ -1,0 +1,308 @@
+# Configuration macro — Mega-Trends & Plans de Relance & Previsions Sell-Side
+# Editable manuellement. Relu par l'API a chaque appel /macro.
+# Derniere mise a jour: 2026-02-21
+
+mega_trends:
+  - id: rearmement_mondial
+    name_fr: "Rearmement Mondial"
+    force: 3
+    change: "="
+    catalysts:
+      - "NDAA $890 Mrd (FY2026, signe)"
+      - "ReArm Europe EUR 800 Mrd"
+      - "SAFE decaissements mars 2026"
+      - "EDIP EUR 1,5 Mrd approuve dec. 2025"
+    etfs_sectoriels: ["XDWI"]
+    etfs_geo: ["EUNK"]
+    etfs_thematiques: ["DFNS", "WDEF", "ISPY"]
+    sectors: ["Industrials", "Aerospace & Defense"]
+
+  - id: ia_capex
+    name_fr: "IA Capex $600B + Stargate"
+    force: 3
+    change: "="
+    catalysts:
+      - "Stargate $100 Mrd deployes, Abilene operationnel"
+      - "Capex Big Tech $180-240B/an"
+      - "EU investAI 13 AI Factories fin 2026"
+    etfs_sectoriels: ["XDWT", "XWTS"]
+    etfs_geo: ["IQQK"]
+    etfs_thematiques: ["SMH", "XAIX", "SKYE"]
+    sectors: ["Information Technology", "Communication Services"]
+
+  - id: rearm_europe
+    name_fr: "ReArm Europe (SAFE + EDIP)"
+    force: 3
+    change: "up"
+    catalysts:
+      - "SAFE EUR 150 Mrd — decaissements mars 2026"
+      - "EDIP EUR 1,5 Mrd approuve dec. 2025"
+      - "BEI EUR 3 Mrd levee exclusion defense"
+      - "European Drone Defense Initiative (fin 2026)"
+    etfs_sectoriels: ["XDWI"]
+    etfs_geo: ["EUNK"]
+    etfs_thematiques: ["WDEF", "DEFS"]
+    sectors: ["Industrials", "Aerospace & Defense"]
+
+  - id: chips_acts
+    name_fr: "CHIPS Acts (US+EU+JP+KR)"
+    force: 2
+    change: "="
+    catalysts:
+      - "CHIPS Act US $33 Mrd+ attribues (19 societes, 40 projets)"
+      - "TSMC $165 Mrd engagement total US"
+      - "TSMC Dresde equipements H2 2026"
+      - "K-CHIPS credits 25% + CHIPS Act JP Y4000 Mrd"
+    etfs_sectoriels: ["XDWT"]
+    etfs_geo: ["IQQK", "SJPA"]
+    etfs_thematiques: ["SMH"]
+    sectors: ["Information Technology", "Semiconductors"]
+
+  - id: repowereu
+    name_fr: "REPowerEU (phase-out formalise)"
+    force: 2
+    change: "up"
+    catalysts:
+      - "Phase-out gaz russe formalise"
+      - "LNG court terme avr. 2026"
+      - "Pipeline sept. 2027"
+      - "Plans nationaux diversification dus 01/03/2026"
+    etfs_sectoriels: ["XDWU", "XDW0"]
+    etfs_geo: ["EUNK"]
+    etfs_thematiques: ["INFR", "URNU"]
+    sectors: ["Utilities", "Energy"]
+
+  - id: investai
+    name_fr: "InvestAI / AI Continent (EUR 250 Mrd)"
+    force: 2
+    change: "up"
+    catalysts:
+      - "13 AI Factories operationnelles fin 2026"
+      - "5 supercalculateurs IA-optimises"
+      - "EUR 20 Mrd pour 5 AI gigafactories"
+    etfs_sectoriels: ["XDWT"]
+    etfs_geo: ["EUNK"]
+    etfs_thematiques: ["XAIX", "SKYE", "RBOT"]
+    sectors: ["Information Technology"]
+
+  - id: shift_fed
+    name_fr: "Shift Fed / Liquidite + Debasement"
+    force: 1
+    change: "="
+    catalysts:
+      - "Gradual Print $300-400B/an au bilan"
+      - "Dominance budgetaire confirmee"
+      - "Deficits US 6-7% du PIB"
+    etfs_sectoriels: ["XDWF", "XDWM"]
+    etfs_geo: ["EIMI"]
+    etfs_thematiques: ["BCHN", "SGLD"]
+    sectors: ["Financials", "Materials"]
+
+  - id: energie_geopolitique
+    name_fr: "Energie + Geopolitique + IRA rollback"
+    force: 1
+    change: "="
+    catalysts:
+      - "Brent $62-70 avec prime geopolitique $5-10"
+      - "IRA rollback ~60% = tailwind fossile"
+      - "Credits clean vehicle termines 31/12/2025"
+    etfs_sectoriels: ["XDW0", "XDWU"]
+    etfs_geo: []
+    etfs_thematiques: ["URNU"]
+    sectors: ["Energy", "Utilities"]
+
+  - id: recovery_em
+    name_fr: "Recovery EM (dollar faible)"
+    force: 1
+    change: "="
+    catalysts:
+      - "Dollar index aux niveaux 2021"
+      - "Valorisations EM P/E ~12x vs US ~22x"
+      - "Banques centrales EM en assouplissement"
+    etfs_sectoriels: []
+    etfs_geo: ["EIMI", "QDV5"]
+    etfs_thematiques: []
+    sectors: []
+
+  - id: nearshoring
+    name_fr: "Nearshoring / China+1"
+    force: 1
+    change: "="
+    catalysts:
+      - "Make in India + nearshoring"
+      - "Vietnam beneficiaire principal China+1"
+      - "Samsung investissements massifs Vietnam"
+    etfs_sectoriels: ["XDWI"]
+    etfs_geo: ["QDV5"]
+    etfs_thematiques: ["RBOT"]
+    sectors: ["Industrials"]
+
+  - id: infra_transport
+    name_fr: "Infrastructure Transport (IIJA)"
+    force: 1
+    change: "="
+    catalysts:
+      - "IIJA $1 200 Mrd (partiellement restaure)"
+      - "$294 Mrd non-obliges, $125 Mrd menaces gel Trump"
+    etfs_sectoriels: ["XDWI"]
+    etfs_geo: []
+    etfs_thematiques: ["INFR"]
+    sectors: ["Industrials"]
+
+  - id: nextgeneu
+    name_fr: "NextGenEU (deadline 08/2026)"
+    force: 1
+    change: "="
+    catalysts:
+      - "EUR 362 Mrd decaisses sur 723 Mrd"
+      - "4300+ jalons en attente"
+      - "Deadline critique aout 2026 = urgence decaissement S1"
+    etfs_sectoriels: []
+    etfs_geo: ["EUNK"]
+    etfs_thematiques: ["INFR"]
+    sectors: []
+
+  - id: reversion_value
+    name_fr: "Reversion Value"
+    force: 0
+    change: "="
+    catalysts:
+      - "Decote P/E Europe vs US (~14x vs ~22x)"
+      - "Equal-weight S&P 500 surperforme vs mega-cap (Lyn Alden)"
+    etfs_sectoriels: ["HLTW"]
+    etfs_geo: ["XCS6", "EUNK"]
+    etfs_thematiques: []
+    sectors: ["Health Care"]
+
+
+investment_plans:
+  us:
+    - name: "NDAA FY2026"
+      amount: "$890,6 Mrd"
+      status: "active"
+      status_detail: "Signe, actif. CR jusqu'au 30/01"
+      change: "="
+      sectors: ["Defense", "Aerospatiale", "Munitions"]
+
+    - name: "CHIPS Act"
+      amount: "$280 Mrd (dont $33 Mrd+ attribues)"
+      status: "active"
+      status_detail: "Acceleration. TSMC $165 Mrd total US"
+      change: "up"
+      sectors: ["Semiconducteurs"]
+
+    - name: "IIJA"
+      amount: "$1 200 Mrd ($294 Mrd non-obliges)"
+      status: "partial"
+      status_detail: "Partiellement restaure par justice. $125 Mrd menaces"
+      change: "down"
+      sectors: ["Transport", "Infra", "Broadband"]
+
+    - name: "IRA"
+      amount: "$369 Mrd"
+      status: "cut"
+      status_detail: "~60% supprimes. EV termines 31/12/25. Hydrogene supprime"
+      change: "down"
+      sectors: ["Clean energy (negatif)", "Fossiles (positif)"]
+
+    - name: "Stargate"
+      amount: "$100-500 Mrd"
+      status: "active"
+      status_detail: "$100 Mrd deployes. Abilene operationnel. Expansion UAE + Norvege"
+      change: "up"
+      sectors: ["IA", "Data centers", "Energie"]
+
+  eu:
+    - name: "ReArm Europe + SAFE"
+      amount: "EUR 800 Mrd + EUR 150 Mrd"
+      status: "active"
+      status_detail: "Decaissements SAFE mars 2026. 2e vague 8 Etats 26/01/26"
+      change: "up"
+      sectors: ["Defense", "Drones", "Missiles", "Cyber"]
+
+    - name: "EDIP"
+      amount: "EUR 1,5 Mrd (+EUR 300M Ukraine)"
+      status: "active"
+      status_detail: "Approuve dec. 2025, 2025-2027"
+      change: "up"
+      sectors: ["Industrie defense"]
+
+    - name: "EU Chips Act"
+      amount: "EUR 53,8 Mrd"
+      status: "active"
+      status_detail: "TSMC Dresde : equipements H2 2026"
+      change: "up"
+      sectors: ["Semiconducteurs"]
+
+    - name: "REPowerEU"
+      amount: "EUR 300 Mrd"
+      status: "active"
+      status_detail: "Phase-out formalise : LNG avr. 2026, pipeline sept. 2027"
+      change: "up"
+      sectors: ["Renouvelables", "Hydrogene", "Reseaux"]
+
+    - name: "InvestAI + AI Continent"
+      amount: "EUR 250 Mrd"
+      status: "active"
+      status_detail: "13 AI Factories fin 2026, 5 supercalculateurs, EUR 20 Mrd gigafactories"
+      change: "up"
+      sectors: ["IA", "Data centers"]
+
+    - name: "BioTechEU"
+      amount: "EUR 10 Mrd (CE + BEI)"
+      status: "active"
+      status_detail: "Lance dec. 2025, 2026-2027"
+      change: "up"
+      sectors: ["Biotechs", "Pharma", "Med devices"]
+
+    - name: "NextGenEU/RRF"
+      amount: "EUR 723 Mrd (EUR 362 Mrd decaisses)"
+      status: "partial"
+      status_detail: "4300+ jalons en attente, deadline aout 2026"
+      change: "down"
+      sectors: ["Multi-secteur"]
+
+
+sell_side_views:
+  - source: "JPMorgan"
+    date: "2025-12-09"
+    forecasts:
+      sp500_eps_growth: "13-15%"
+      recession_probability: "35%"
+      fed_cuts_2026: "50bp"
+      us_10y_target: "4.35%"
+      brent_target: "$58/bbl"
+      gold_target: "$5000/oz"
+      eurusd_target: "1.20"
+    key_themes:
+      - "AI supercycle annee 2-3 sur 10+ ans"
+      - "EM double-digit gains attendus (dev + emergents)"
+      - "Eurozone earnings growth 13%+"
+      - "Dollar bearish modere (milieu du dollar smile)"
+      - "70% des banques centrales en pause"
+      - "K-shaped economy : capex fort vs emploi faible"
+    risks:
+      - "Sticky inflation empechant la Fed d'agir"
+      - "Recession US 35% probabilite"
+      - "AI ROI decevant si valorisations insoutenables"
+      - "Tarifs commerciaux et tensions geopolitiques"
+
+  - source: "BofA Global Research"
+    date: "2025-12-16"
+    forecasts:
+      us_gdp: "2.4%"
+      china_gdp: "4.7%"
+      sp500_target: "7100"
+      sp500_eps_growth: "14%"
+      us_10y_target: "4.00-4.25%"
+      fed_cuts_2026: "50bp (juin + juillet)"
+    key_themes:
+      - "Shift de consommation vers capex"
+      - "EM favorises (dollar faible, taux bas, petrole bas)"
+      - "Cuivre surperformance (offre tendue, demande forte)"
+      - "HY bonds plus attractifs que private credit"
+      - "Housing turnover en amelioration"
+    risks:
+      - "Impact IA flou = volatilite marches"
+      - "Economie K-shaped (actifs vs salaries)"
+      - "Dominance fiscale"

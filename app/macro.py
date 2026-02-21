@@ -1,11 +1,16 @@
 """Macro economic indicators dashboard.
 
-Self-contained module that fetches macro indicators from three sources:
-- FRED API (US: CPI, Core CPI, Unemployment, Fed Funds, ISM)
-- yfinance (market: US 10Y yield, VIX, EUR/USD)
+Self-contained module that fetches macro indicators from multiple sources:
+- FRED API (US: CPI, Core CPI, Unemployment, Fed Funds, ISM, Yield Curve,
+  Fed Balance Sheet, Initial Claims, Consumer Sentiment, HY Spread, GDP)
+- yfinance (market: US 10Y yield, VIX, EUR/USD, DXY, Gold, BTC, Copper, Oil)
 - ECB Data Portal (EU: Main Refi Rate, EUR CPI HICP)
 
-Each source degrades gracefully if unavailable.
+Additional context loaded from local files:
+- macro_config.yaml: mega-trends, investment plans, sell-side views
+- context/macro/Lyn Alden/*.md: Lyn Alden premium article summaries
+- context/macro/sell-side/*.md: sell-side research summaries (JPMorgan, BofA)
+
 Results are cached in macro_outlook.yaml (valid 6 hours).
 """
 
@@ -13,8 +18,10 @@ from __future__ import annotations
 
 import csv
 import datetime
+import glob as glob_mod
 import io
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -22,7 +29,7 @@ import requests
 import yaml
 import yfinance as yf
 
-from app.config import FRED_API_KEY
+from app.config import FRED_API_KEY, MACRO_CONFIG_PATH, LYN_ALDEN_DIR, SELL_SIDE_DIR
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +50,7 @@ FRED_INDICATORS = {
         "name_fr": "IPC US (tous postes, GA)",
         "unit": "%",
         "category": "inflation",
-        "extra_params": {"units": "pc1"},  # percent change from year ago
+        "extra_params": {"units": "pc1"},
     },
     "us_core_cpi": {
         "series_id": "CPILFESL",
@@ -70,10 +77,58 @@ FRED_INDICATORS = {
         "extra_params": {},
     },
     "ism_manufacturing": {
-        "series_id": "NAPM",
-        "name": "ISM Manufacturing PMI",
-        "name_fr": "ISM Manufacturier",
+        "series_id": "IPMAN",
+        "name": "Industrial Production: Manufacturing",
+        "name_fr": "Production Industrielle Manufacturiere",
         "unit": "Index",
+        "category": "activity",
+        "extra_params": {},
+    },
+    "yield_curve": {
+        "series_id": "T10Y2Y",
+        "name": "US Yield Curve (10Y-2Y Spread)",
+        "name_fr": "Courbe de taux US (10A-2A)",
+        "unit": "%",
+        "category": "rates",
+        "extra_params": {},
+    },
+    "fed_balance_sheet": {
+        "series_id": "WALCL",
+        "name": "Fed Balance Sheet (Total Assets)",
+        "name_fr": "Bilan Fed (Actifs totaux)",
+        "unit": "Mrd$",
+        "category": "monetary",
+        "extra_params": {},
+    },
+    "initial_claims": {
+        "series_id": "ICSA",
+        "name": "Initial Jobless Claims",
+        "name_fr": "Inscriptions chomage initiales",
+        "unit": "K",
+        "category": "employment",
+        "extra_params": {},
+    },
+    "consumer_sentiment": {
+        "series_id": "UMCSENT",
+        "name": "UMich Consumer Sentiment",
+        "name_fr": "Sentiment consommateurs (UMich)",
+        "unit": "Index",
+        "category": "sentiment",
+        "extra_params": {},
+    },
+    "hy_spread": {
+        "series_id": "BAMLH0A0HYM2",
+        "name": "US HY Credit Spread (OAS)",
+        "name_fr": "Spread credit HY US (OAS)",
+        "unit": "bp",
+        "category": "credit",
+        "extra_params": {},
+    },
+    "gdp": {
+        "series_id": "GDP",
+        "name": "US GDP (Quarterly)",
+        "name_fr": "PIB US (trimestriel)",
+        "unit": "Mrd$",
         "category": "activity",
         "extra_params": {},
     },
@@ -122,6 +177,41 @@ YFINANCE_INDICATORS = {
         "unit": "Rate",
         "category": "forex",
     },
+    "dxy": {
+        "ticker": "DX-Y.NYB",
+        "name": "US Dollar Index (DXY)",
+        "name_fr": "Indice Dollar US (DXY)",
+        "unit": "Index",
+        "category": "forex",
+    },
+    "gold": {
+        "ticker": "GC=F",
+        "name": "Gold (USD/oz)",
+        "name_fr": "Or (USD/oz)",
+        "unit": "$/oz",
+        "category": "commodity",
+    },
+    "btc": {
+        "ticker": "BTC-USD",
+        "name": "Bitcoin",
+        "name_fr": "Bitcoin",
+        "unit": "$",
+        "category": "commodity",
+    },
+    "copper": {
+        "ticker": "HG=F",
+        "name": "Copper Futures",
+        "name_fr": "Cuivre (Futures)",
+        "unit": "$/lb",
+        "category": "commodity",
+    },
+    "oil_wti": {
+        "ticker": "CL=F",
+        "name": "Oil WTI",
+        "name_fr": "Petrole WTI",
+        "unit": "$/bbl",
+        "category": "commodity",
+    },
 }
 
 
@@ -146,6 +236,56 @@ class MacroIndicator:
 
 
 @dataclass
+class MegaTrend:
+    id: str
+    name_fr: str
+    force: int  # 0-3
+    change: str  # "=", "up", "down"
+    catalysts: list[str] = field(default_factory=list)
+    etfs_sectoriels: list[str] = field(default_factory=list)
+    etfs_geo: list[str] = field(default_factory=list)
+    etfs_thematiques: list[str] = field(default_factory=list)
+    sectors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class InvestmentPlan:
+    name: str
+    amount: str
+    status: str  # "active", "partial", "cut", "proposed"
+    status_detail: str
+    change: str  # "=", "up", "down"
+    sectors: list[str] = field(default_factory=list)
+    region: str = ""  # "us" or "eu"
+
+
+@dataclass
+class SellSideView:
+    source: str
+    date: str
+    forecasts: dict = field(default_factory=dict)
+    key_themes: list[str] = field(default_factory=list)
+    risks: list[str] = field(default_factory=list)
+
+
+@dataclass
+class LynAldenArticle:
+    filename: str
+    date: str
+    title: str
+    key_points: list[str] = field(default_factory=list)
+    portfolio_changes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SectorSignal:
+    sector: str
+    signal: str  # "bullish", "bearish", "neutral"
+    supporting_trends: list[str] = field(default_factory=list)
+    indicator_signals: list[str] = field(default_factory=list)
+
+
+@dataclass
 class MacroOutlook:
     outlook: str = "neutral"
     score: float = 0.0
@@ -154,6 +294,11 @@ class MacroOutlook:
     sources_available: list[str] = field(default_factory=list)
     sources_failed: list[str] = field(default_factory=list)
     themes: list[str] = field(default_factory=list)
+    mega_trends: list[MegaTrend] = field(default_factory=list)
+    investment_plans: list[InvestmentPlan] = field(default_factory=list)
+    sell_side_views: list[SellSideView] = field(default_factory=list)
+    lyn_alden_insights: list[LynAldenArticle] = field(default_factory=list)
+    sector_signals: list[SectorSignal] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -162,11 +307,7 @@ class MacroOutlook:
 
 def _fetch_fred_series(series_id: str, limit: int = 2,
                        extra_params: dict | None = None) -> list[dict]:
-    """Fetch latest observations from FRED API.
-
-    Returns list of {"date": "YYYY-MM-DD", "value": "123.456"} dicts,
-    newest first.  Returns [] if FRED_API_KEY is not set or request fails.
-    """
+    """Fetch latest observations from FRED API."""
     if not FRED_API_KEY:
         return []
 
@@ -231,11 +372,7 @@ def _fetch_all_fred() -> dict[str, MacroIndicator]:
 # ---------------------------------------------------------------------------
 
 def _fetch_ecb_series(flow_ref: str, key: str) -> list[dict]:
-    """Fetch latest observations from ECB Data Portal (CSV format).
-
-    Returns list of {"date": "YYYY-MM", "value": float} dicts,
-    newest first.
-    """
+    """Fetch latest observations from ECB Data Portal (CSV format)."""
     url = f"{ECB_BASE_URL}/{flow_ref}/{key}"
     try:
         resp = requests.get(
@@ -317,6 +454,147 @@ def _fetch_all_yfinance() -> dict[str, MacroIndicator]:
 
 
 # ---------------------------------------------------------------------------
+# Macro config loader (mega-trends, plans, sell-side views)
+# ---------------------------------------------------------------------------
+
+def _load_macro_config() -> dict:
+    """Load macro_config.yaml (mega-trends + investment plans + sell-side views)."""
+    if not os.path.exists(MACRO_CONFIG_PATH):
+        return {"mega_trends": [], "investment_plans": {"us": [], "eu": []}, "sell_side_views": []}
+    try:
+        with open(MACRO_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return data
+    except Exception:
+        return {"mega_trends": [], "investment_plans": {"us": [], "eu": []}, "sell_side_views": []}
+
+
+def _parse_mega_trends(config: dict) -> list[MegaTrend]:
+    raw = config.get("mega_trends", [])
+    return [
+        MegaTrend(
+            id=t.get("id", ""),
+            name_fr=t.get("name_fr", ""),
+            force=t.get("force", 1),
+            change=t.get("change", "="),
+            catalysts=t.get("catalysts", []),
+            etfs_sectoriels=t.get("etfs_sectoriels", []),
+            etfs_geo=t.get("etfs_geo", []),
+            etfs_thematiques=t.get("etfs_thematiques", []),
+            sectors=t.get("sectors", []),
+        )
+        for t in raw
+    ]
+
+
+def _parse_investment_plans(config: dict) -> list[InvestmentPlan]:
+    plans_data = config.get("investment_plans", {})
+    result = []
+    for region in ("us", "eu"):
+        for p in plans_data.get(region, []):
+            result.append(InvestmentPlan(
+                name=p.get("name", ""),
+                amount=p.get("amount", ""),
+                status=p.get("status", "active"),
+                status_detail=p.get("status_detail", ""),
+                change=p.get("change", "="),
+                sectors=p.get("sectors", []),
+                region=region,
+            ))
+    return result
+
+
+def _parse_sell_side_views(config: dict) -> list[SellSideView]:
+    raw = config.get("sell_side_views", [])
+    return [
+        SellSideView(
+            source=v.get("source", ""),
+            date=v.get("date", ""),
+            forecasts=v.get("forecasts", {}),
+            key_themes=v.get("key_themes", []),
+            risks=v.get("risks", []),
+        )
+        for v in raw
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Lyn Alden article parser
+# ---------------------------------------------------------------------------
+
+def _parse_lyn_alden_articles() -> list[LynAldenArticle]:
+    """Read and parse all .md files in the Lyn Alden directory.
+
+    Extracts: date (from filename YYMMDD), title (first # heading),
+    key points (from ## Points Cl section), portfolio changes
+    (from ## Mises a Jour du Portefeuille section).
+    """
+    if not os.path.isdir(LYN_ALDEN_DIR):
+        return []
+
+    md_files = sorted(glob_mod.glob(os.path.join(LYN_ALDEN_DIR, "*.md")), reverse=True)
+    articles = []
+
+    for filepath in md_files:
+        filename = os.path.basename(filepath)
+        match = re.match(r"(\d{6})_", filename)
+        if not match:
+            continue
+
+        yymmdd = match.group(1)
+        date_str = f"20{yymmdd[:2]}-{yymmdd[2:4]}-{yymmdd[4:6]}"
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception:
+            continue
+
+        title_match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else filename.replace(".md", "").replace("_", " ")
+
+        key_points = _extract_section_bullets(content, "Points Cl")
+        portfolio_changes = _extract_section_bullets(content, r"Mises?\s.*Jour.*Portefeuille")
+
+        articles.append(LynAldenArticle(
+            filename=filename,
+            date=date_str,
+            title=title,
+            key_points=key_points[:8],
+            portfolio_changes=portfolio_changes[:6],
+        ))
+
+    return articles
+
+
+def _extract_section_bullets(content: str, section_pattern: str) -> list[str]:
+    """Extract bullet points from a section matching the given heading pattern."""
+    pattern = rf"^##\s+.*{section_pattern}.*$"
+    match = re.search(pattern, content, re.MULTILINE | re.IGNORECASE)
+    if not match:
+        return []
+
+    start = match.end()
+    next_heading = re.search(r"^##\s+", content[start:], re.MULTILINE)
+    end = start + next_heading.start() if next_heading else len(content)
+
+    section = content[start:end]
+    bullets = []
+    for line in section.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("- **"):
+            bold_match = re.match(r"- \*\*(.+?)\*\*", stripped)
+            if bold_match:
+                bullets.append(bold_match.group(1))
+            else:
+                bullets.append(stripped[2:])
+        elif stripped.startswith("- "):
+            bullets.append(stripped[2:])
+
+    return bullets
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -365,12 +643,12 @@ def _score_indicator(ind: MacroIndicator) -> float:
             return -1.0
         return 0.0
 
-    # ISM: above 52 = expansion, below 48 = contraction
+    # Industrial Production Manufacturing: trend-based (up = +0.5, down = -0.5)
     if key == "ism_manufacturing":
-        if ind.value > 52:
-            return 1.0
-        elif ind.value < 48:
-            return -1.0
+        if ind.trend == "up":
+            return 0.5
+        elif ind.trend == "down":
+            return -0.5
         return 0.0
 
     # US 10Y: rising yields = tighter conditions (half weight)
@@ -387,6 +665,76 @@ def _score_indicator(ind: MacroIndicator) -> float:
             return 1.0
         elif ind.value > 25:
             return -1.0
+        return 0.0
+
+    # Yield curve: positive = bullish, inverted (negative) = bearish
+    if key == "yield_curve":
+        if ind.value > 0.5:
+            return 1.0
+        elif ind.value < 0:
+            return -1.0
+        elif ind.value < 0.3:
+            return -0.5
+        return 0.0
+
+    # Fed balance sheet: growing = bullish (more liquidity)
+    if key == "fed_balance_sheet":
+        if ind.trend == "up":
+            return 0.5
+        elif ind.trend == "down":
+            return -0.5
+        return 0.0
+
+    # Initial claims: low = bullish, high = bearish
+    if key == "initial_claims":
+        if ind.value < 220000:
+            return 1.0
+        elif ind.value > 300000:
+            return -1.0
+        return 0.0
+
+    # Consumer sentiment: absolute level
+    if key == "consumer_sentiment":
+        if ind.value > 80:
+            return 1.0
+        elif ind.value < 60:
+            return -1.0
+        return 0.0
+
+    # HY credit spread: tight = bullish, wide = bearish
+    if key == "hy_spread":
+        if ind.value < 350:
+            return 1.0
+        elif ind.value > 600:
+            return -1.0
+        return 0.0
+
+    # GDP: trend only
+    if key == "gdp":
+        if ind.trend == "up":
+            return 0.5
+        elif ind.trend == "down":
+            return -0.5
+        return 0.0
+
+    # DXY: falling dollar = bullish (for global risk assets)
+    if key == "dxy":
+        if ind.trend == "down":
+            return 0.5
+        elif ind.trend == "up":
+            return -0.5
+        return 0.0
+
+    # Copper: "Dr. Copper" — rising = bullish (growth signal)
+    if key == "copper":
+        if ind.trend == "up":
+            return 0.5
+        elif ind.trend == "down":
+            return -0.5
+        return 0.0
+
+    # Gold, BTC, Oil: informational, no scoring impact
+    if key in ("gold", "btc", "oil_wti"):
         return 0.0
 
     # EUR/USD: informational, no scoring impact
@@ -406,10 +754,7 @@ def _apply_signals(indicators: list[MacroIndicator]) -> None:
 
 
 def _compute_outlook(indicators: list[MacroIndicator]) -> tuple[str, float]:
-    """Compute aggregate outlook from individual scores.
-
-    Returns (outlook_label, normalized_score).
-    """
+    """Compute aggregate outlook from individual scores."""
     scored = [ind for ind in indicators if ind.value is not None]
     if not scored:
         return "neutral", 0.0
@@ -429,6 +774,77 @@ def _compute_outlook(indicators: list[MacroIndicator]) -> tuple[str, float]:
         outlook = "neutral"
 
     return outlook, round(avg, 3)
+
+
+# ---------------------------------------------------------------------------
+# Sector signals
+# ---------------------------------------------------------------------------
+
+CATEGORY_SECTOR_MAP = {
+    "inflation": ["Consumer Staples", "Utilities", "Materials"],
+    "rates": ["Financials", "Real Estate"],
+    "employment": ["Consumer Discretionary", "Industrials"],
+    "activity": ["Industrials", "Materials", "Energy"],
+    "monetary": ["Financials", "Materials"],
+    "sentiment": ["Consumer Discretionary", "Communication Services"],
+    "commodity": ["Energy", "Materials"],
+    "credit": ["Financials"],
+}
+
+GICS_SECTORS = [
+    "Information Technology", "Health Care", "Financials",
+    "Industrials", "Energy", "Communication Services",
+    "Consumer Discretionary", "Consumer Staples", "Utilities",
+    "Materials", "Real Estate",
+]
+
+
+def _compute_sector_signals(
+    indicators: list[MacroIndicator],
+    mega_trends: list[MegaTrend],
+) -> list[SectorSignal]:
+    """Compute sector-level signals by aggregating indicator signals
+    and mega-trend support."""
+    all_sectors = set(GICS_SECTORS)
+    for mt in mega_trends:
+        all_sectors.update(mt.sectors)
+
+    signals = []
+    for sector in sorted(all_sectors):
+        supporting = [mt.id for mt in mega_trends if sector in mt.sectors]
+
+        relevant_indicators = []
+        for ind in indicators:
+            if ind.value is None:
+                continue
+            mapped_sectors = CATEGORY_SECTOR_MAP.get(ind.category, [])
+            if sector in mapped_sectors:
+                relevant_indicators.append(f"{ind.name_fr}: {ind.signal or 'neutral'}")
+
+        trend_score = sum(mt.force for mt in mega_trends if sector in mt.sectors)
+        ind_scores = [
+            _score_indicator(ind) for ind in indicators
+            if ind.value is not None and sector in CATEGORY_SECTOR_MAP.get(ind.category, [])
+        ]
+        ind_avg = sum(ind_scores) / len(ind_scores) if ind_scores else 0
+
+        combined = (trend_score / 3.0 + ind_avg) / 2 if trend_score > 0 else ind_avg
+
+        if combined > 0.3:
+            signal = "bullish"
+        elif combined < -0.3:
+            signal = "bearish"
+        else:
+            signal = "neutral"
+
+        signals.append(SectorSignal(
+            sector=sector,
+            signal=signal,
+            supporting_trends=supporting,
+            indicator_signals=relevant_indicators,
+        ))
+
+    return sorted(signals, key=lambda s: {"bullish": 0, "neutral": 1, "bearish": 2}[s.signal])
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +898,24 @@ def compute_macro_outlook(force_refresh: bool = False) -> MacroOutlook:
     _apply_signals(all_indicators)
     outlook_label, score = _compute_outlook(all_indicators)
 
+    # Load config (mega-trends, investment plans, sell-side views)
+    config = _load_macro_config()
+    mega_trends = _parse_mega_trends(config)
+    investment_plans = _parse_investment_plans(config)
+    sell_side_views = _parse_sell_side_views(config)
+
+    # Parse Lyn Alden articles
+    lyn_alden_insights = _parse_lyn_alden_articles()
+
+    # Compute sector signals
+    sector_signals = _compute_sector_signals(all_indicators, mega_trends)
+
+    # Populate themes from latest Lyn Alden article
+    themes = []
+    if lyn_alden_insights:
+        latest = lyn_alden_insights[0]
+        themes = latest.key_points[:5]
+
     result = MacroOutlook(
         outlook=outlook_label,
         score=score,
@@ -489,6 +923,12 @@ def compute_macro_outlook(force_refresh: bool = False) -> MacroOutlook:
         last_updated=datetime.datetime.now().isoformat(timespec="seconds"),
         sources_available=sources_available,
         sources_failed=sources_failed,
+        themes=themes,
+        mega_trends=mega_trends,
+        investment_plans=investment_plans,
+        sell_side_views=sell_side_views,
+        lyn_alden_insights=lyn_alden_insights,
+        sector_signals=sector_signals,
     )
 
     _save_outlook_yaml(result)
@@ -507,7 +947,14 @@ def _load_cached_outlook() -> MacroOutlook | None:
         age = datetime.datetime.now() - updated_dt
         if age.total_seconds() >= CACHE_TTL_SECONDS:
             return None
+
         indicators = [MacroIndicator(**ind) for ind in data.get("indicators", [])]
+        mega_trends = [MegaTrend(**mt) for mt in data.get("mega_trends", [])]
+        investment_plans = [InvestmentPlan(**ip) for ip in data.get("investment_plans", [])]
+        sell_side_views = [SellSideView(**sv) for sv in data.get("sell_side_views", [])]
+        lyn_alden_insights = [LynAldenArticle(**la) for la in data.get("lyn_alden_insights", [])]
+        sector_signals = [SectorSignal(**ss) for ss in data.get("sector_signals", [])]
+
         return MacroOutlook(
             outlook=data.get("outlook", "neutral"),
             score=data.get("score", 0.0),
@@ -516,6 +963,11 @@ def _load_cached_outlook() -> MacroOutlook | None:
             sources_available=data.get("sources_available", []),
             sources_failed=data.get("sources_failed", []),
             themes=data.get("themes", []),
+            mega_trends=mega_trends,
+            investment_plans=investment_plans,
+            sell_side_views=sell_side_views,
+            lyn_alden_insights=lyn_alden_insights,
+            sector_signals=sector_signals,
         )
     except Exception:
         return None
@@ -532,20 +984,53 @@ def _save_outlook_yaml(result: MacroOutlook) -> None:
         "themes": result.themes,
         "indicators": [
             {
-                "key": ind.key,
-                "name": ind.name,
-                "name_fr": ind.name_fr,
-                "source": ind.source,
-                "category": ind.category,
-                "unit": ind.unit,
-                "value": ind.value,
-                "previous_value": ind.previous_value,
-                "date": ind.date,
-                "trend": ind.trend,
-                "signal": ind.signal,
+                "key": ind.key, "name": ind.name, "name_fr": ind.name_fr,
+                "source": ind.source, "category": ind.category, "unit": ind.unit,
+                "value": ind.value, "previous_value": ind.previous_value,
+                "date": ind.date, "trend": ind.trend, "signal": ind.signal,
                 "error": ind.error,
             }
             for ind in result.indicators
+        ],
+        "mega_trends": [
+            {
+                "id": mt.id, "name_fr": mt.name_fr, "force": mt.force,
+                "change": mt.change, "catalysts": mt.catalysts,
+                "etfs_sectoriels": mt.etfs_sectoriels, "etfs_geo": mt.etfs_geo,
+                "etfs_thematiques": mt.etfs_thematiques, "sectors": mt.sectors,
+            }
+            for mt in result.mega_trends
+        ],
+        "investment_plans": [
+            {
+                "name": ip.name, "amount": ip.amount, "status": ip.status,
+                "status_detail": ip.status_detail, "change": ip.change,
+                "sectors": ip.sectors, "region": ip.region,
+            }
+            for ip in result.investment_plans
+        ],
+        "sell_side_views": [
+            {
+                "source": sv.source, "date": sv.date,
+                "forecasts": sv.forecasts, "key_themes": sv.key_themes,
+                "risks": sv.risks,
+            }
+            for sv in result.sell_side_views
+        ],
+        "lyn_alden_insights": [
+            {
+                "filename": la.filename, "date": la.date, "title": la.title,
+                "key_points": la.key_points, "portfolio_changes": la.portfolio_changes,
+            }
+            for la in result.lyn_alden_insights
+        ],
+        "sector_signals": [
+            {
+                "sector": ss.sector, "signal": ss.signal,
+                "supporting_trends": ss.supporting_trends,
+                "indicator_signals": ss.indicator_signals,
+            }
+            for ss in result.sector_signals
         ],
     }
     with open(MACRO_OUTLOOK_PATH, "w") as f:

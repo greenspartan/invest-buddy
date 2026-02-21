@@ -310,6 +310,241 @@ with tab_performance:
         st.info("Aucune donnee de performance disponible pour cette periode.")
 
 # === Tab 5: Macro ==========================================================
+
+# --- Macro helper constants ---
+_OUTLOOK_CONFIG = {
+    "risk-on": {"label": "RISK-ON", "icon": "🟢"},
+    "moderate-risk-on": {"label": "RISK-ON MODERE", "icon": "🟡"},
+    "neutral": {"label": "NEUTRE", "icon": "⚪"},
+    "moderate-risk-off": {"label": "RISK-OFF MODERE", "icon": "🟠"},
+    "risk-off": {"label": "RISK-OFF", "icon": "🔴"},
+}
+_FORCE_DISPLAY = {0: "🟡", 1: "🟢", 2: "🟢🟢", 3: "🟢🟢🟢"}
+_CHANGE_DISPLAY = {"=": "=", "up": "↑", "down": "↓"}
+_STATUS_BADGES = {"active": "✅", "partial": "⚠️", "cut": "🔴", "proposed": "📋"}
+_TREND_ARROWS = {"up": "↑", "down": "↓", "flat": "→"}
+_SIGNAL_ICONS = {"bullish": "🟢", "bearish": "🔴", "neutral": "⚪"}
+_CATEGORY_ORDER = [
+    ("inflation", "📊 Inflation"),
+    ("rates", "💰 Taux"),
+    ("employment", "👷 Emploi"),
+    ("activity", "🏭 Activite"),
+    ("monetary", "🏦 Monetaire"),
+    ("commodity", "🛢️ Commodites"),
+    ("sentiment", "📈 Sentiment"),
+    ("credit", "📉 Credit"),
+    ("forex", "💱 Devises"),
+]
+
+
+def _render_macro_outlook(macro_data):
+    """Section 1: Outlook banner."""
+    outlook = macro_data["outlook"]
+    score = macro_data["score"]
+    cfg = _OUTLOOK_CONFIG.get(outlook, _OUTLOOK_CONFIG["neutral"])
+    st.markdown(f"### {cfg['icon']} Outlook: **{cfg['label']}** (score: {score:+.3f})")
+    st.caption(
+        f"Sources actives: {', '.join(macro_data['sources_available'])}. "
+        f"Echec: {', '.join(macro_data['sources_failed']) or 'aucun'}. "
+        f"Derniere MAJ: {macro_data['last_updated']}"
+    )
+    if macro_data.get("themes"):
+        st.markdown("**Themes macro (Lyn Alden):**")
+        for theme in macro_data["themes"]:
+            st.markdown(f"- {theme}")
+
+
+def _render_mega_trends(macro_data):
+    """Section 2: Mega-Trends matrix."""
+    st.subheader("Matrice Mega-Trends")
+    trends = macro_data.get("mega_trends", [])
+    if not trends:
+        st.info("Aucune donnee mega-trends. Editez macro_config.yaml.")
+        return
+
+    trends_sorted = sorted(trends, key=lambda t: t.get("force", 0), reverse=True)
+    rows = []
+    for i, t in enumerate(trends_sorted, 1):
+        all_etfs = t.get("etfs_sectoriels", []) + t.get("etfs_geo", []) + t.get("etfs_thematiques", [])
+        rows.append({
+            "#": i,
+            "Mega-Trend": t["name_fr"],
+            "Force": _FORCE_DISPLAY.get(t.get("force", 0), "?"),
+            "Δ": _CHANGE_DISPLAY.get(t.get("change", "="), "="),
+            "ETFs": ", ".join(all_etfs) or "—",
+            "Secteurs": ", ".join(t.get("sectors", [])) or "—",
+        })
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    with st.expander("Detail des catalyseurs"):
+        for t in trends_sorted:
+            force_str = _FORCE_DISPLAY.get(t.get("force", 0), "?")
+            st.markdown(f"**{force_str} {t['name_fr']}**")
+            for c in t.get("catalysts", []):
+                st.markdown(f"  - {c}")
+
+
+def _render_investment_plans(macro_data):
+    """Section 3: Plans de Relance (US + EU)."""
+    st.subheader("Plans de Relance")
+    plans = macro_data.get("investment_plans", [])
+    if not plans:
+        st.info("Aucune donnee plans de relance. Editez macro_config.yaml.")
+        return
+
+    us_plans = [p for p in plans if p.get("region") == "us"]
+    eu_plans = [p for p in plans if p.get("region") == "eu"]
+
+    col_us, col_eu = st.columns(2)
+
+    with col_us:
+        st.markdown("#### 🇺🇸 US — Congres / Administration")
+        if us_plans:
+            rows = [{
+                "Programme": p["name"],
+                "Montant": p["amount"],
+                "Statut": f"{_STATUS_BADGES.get(p.get('status', ''), '?')} {p.get('status_detail', '')}",
+                "Δ": _CHANGE_DISPLAY.get(p.get("change", "="), "="),
+            } for p in us_plans]
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    with col_eu:
+        st.markdown("#### 🇪🇺 EU — Commission / Parlement")
+        if eu_plans:
+            rows = [{
+                "Programme": p["name"],
+                "Montant": p["amount"],
+                "Statut": f"{_STATUS_BADGES.get(p.get('status', ''), '?')} {p.get('status_detail', '')}",
+                "Δ": _CHANGE_DISPLAY.get(p.get("change", "="), "="),
+            } for p in eu_plans]
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_sell_side_views(macro_data):
+    """Section 4: Previsions Sell-Side (JPMorgan, BofA)."""
+    st.subheader("Previsions Sell-Side")
+    views = macro_data.get("sell_side_views", [])
+    if not views:
+        st.info("Aucune prevision sell-side. Editez macro_config.yaml.")
+        return
+
+    tabs_sell = st.tabs([f"{v['source']} ({v['date']})" for v in views])
+    for tab_sv, view in zip(tabs_sell, views):
+        with tab_sv:
+            # Forecasts table
+            forecasts = view.get("forecasts", {})
+            if forecasts:
+                st.markdown("**Previsions cles:**")
+                rows = [{"Indicateur": k.replace("_", " ").title(), "Prevision": v} for k, v in forecasts.items()]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+            # Key themes
+            themes = view.get("key_themes", [])
+            if themes:
+                st.markdown("**Themes:**")
+                for t in themes:
+                    st.markdown(f"- {t}")
+
+            # Risks
+            risks = view.get("risks", [])
+            if risks:
+                st.markdown("**Risques:**")
+                for r in risks:
+                    st.markdown(f"- ⚠️ {r}")
+
+
+def _render_lyn_alden(macro_data):
+    """Section 5: Lyn Alden Premium Insights."""
+    st.subheader("Lyn Alden — Analyse Premium")
+    articles = macro_data.get("lyn_alden_insights", [])
+    if not articles:
+        st.info("Aucun article Lyn Alden trouve dans context/macro/Lyn Alden/.")
+        return
+
+    latest = articles[0]
+    st.markdown(f"#### 📄 Dernier article: **{latest['title']}** ({latest['date']})")
+
+    if latest.get("key_points"):
+        st.markdown("**Points cles:**")
+        for pt in latest["key_points"]:
+            st.markdown(f"- {pt}")
+
+    if latest.get("portfolio_changes"):
+        st.markdown("**Mouvements portefeuille:**")
+        for mv in latest["portfolio_changes"]:
+            st.markdown(f"- {mv}")
+
+    if len(articles) > 1:
+        with st.expander(f"Articles precedents ({len(articles) - 1})"):
+            for art in articles[1:]:
+                st.markdown(f"**{art['title']}** — {art['date']}")
+                if art.get("key_points"):
+                    for pt in art["key_points"][:3]:
+                        st.markdown(f"  - {pt}")
+                st.markdown("---")
+
+
+def _render_indicators(macro_data):
+    """Section 6: Macro indicators grouped by category."""
+    st.subheader("Indicateurs Macro")
+
+    indicators_ok = [ind for ind in macro_data["indicators"] if ind.get("error") is None]
+    by_category = {}
+    for ind in indicators_ok:
+        cat = ind.get("category", "other")
+        by_category.setdefault(cat, []).append(ind)
+
+    for cat_key, cat_label in _CATEGORY_ORDER:
+        inds = by_category.get(cat_key, [])
+        if not inds:
+            continue
+
+        st.markdown(f"**{cat_label}**")
+        df = pd.DataFrame(inds)
+        df["Tendance"] = df["trend"].map(lambda t: _TREND_ARROWS.get(t, "—"))
+        df["Signal"] = df["signal"].map(lambda s: _SIGNAL_ICONS.get(s, "—"))
+
+        df_display = df[["name_fr", "value", "previous_value", "Tendance", "Signal", "unit", "source", "date"]].copy()
+        df_display.columns = ["Indicateur", "Valeur", "Precedente", "Tendance", "Signal", "Unite", "Source", "Date"]
+
+        st.dataframe(
+            df_display.style.format({
+                "Valeur": lambda v: f"{v:,.2f}" if pd.notna(v) else "—",
+                "Precedente": lambda v: f"{v:,.2f}" if pd.notna(v) else "—",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    failed = [ind for ind in macro_data["indicators"] if ind.get("error") is not None]
+    if failed:
+        with st.expander(f"{len(failed)} indicateur(s) indisponible(s)"):
+            for ind in failed:
+                st.text(f"{ind['name_fr']}: {ind['error']}")
+
+
+def _render_sector_signals(macro_data):
+    """Section 7: Sector signals."""
+    st.subheader("Signaux Sectoriels")
+    signals = macro_data.get("sector_signals", [])
+    if not signals:
+        st.info("Aucun signal sectoriel disponible.")
+        return
+
+    rows = []
+    for s in signals:
+        signal_icon = _SIGNAL_ICONS.get(s.get("signal", "neutral"), "⚪")
+        signal_label = s.get("signal", "neutral").capitalize()
+        rows.append({
+            "Secteur": s["sector"],
+            "Signal": f"{signal_icon} {signal_label}",
+            "Mega-Trends": ", ".join(s.get("supporting_trends", [])) or "—",
+        })
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 with tab_macro:
 
     col_refresh, _ = st.columns([1, 5])
@@ -325,65 +560,19 @@ with tab_macro:
         macro_data = None
 
     if macro_data:
-        # --- Outlook banner ---
-        outlook = macro_data["outlook"]
-        score = macro_data["score"]
-
-        OUTLOOK_CONFIG = {
-            "risk-on": {"label": "RISK-ON", "icon": "🟢"},
-            "moderate-risk-on": {"label": "RISK-ON MODERE", "icon": "🟡"},
-            "neutral": {"label": "NEUTRE", "icon": "⚪"},
-            "moderate-risk-off": {"label": "RISK-OFF MODERE", "icon": "🟠"},
-            "risk-off": {"label": "RISK-OFF", "icon": "🔴"},
-        }
-        cfg = OUTLOOK_CONFIG.get(outlook, OUTLOOK_CONFIG["neutral"])
-
-        st.markdown(f"### {cfg['icon']} Outlook: **{cfg['label']}** (score: {score:+.3f})")
-
-        st.caption(
-            f"Sources actives: {', '.join(macro_data['sources_available'])}. "
-            f"Echec: {', '.join(macro_data['sources_failed']) or 'aucun'}. "
-            f"Derniere MAJ: {macro_data['last_updated']}"
-        )
-
-        # --- Themes (from Lyn Alden, if populated) ---
-        if macro_data.get("themes"):
-            st.subheader("Themes macro")
-            for theme in macro_data["themes"]:
-                st.markdown(f"- {theme}")
-
-        # --- Indicators table ---
-        st.subheader("Indicateurs")
-
-        indicators_ok = [ind for ind in macro_data["indicators"] if ind.get("error") is None]
-        if indicators_ok:
-            df_macro = pd.DataFrame(indicators_ok)
-
-            TREND_ARROWS = {"up": "↑", "down": "↓", "flat": "→"}
-            SIGNAL_COLORS = {"bullish": "🟢", "bearish": "🔴", "neutral": "⚪"}
-
-            df_macro["Tendance"] = df_macro["trend"].map(lambda t: TREND_ARROWS.get(t, "—"))
-            df_macro["Signal"] = df_macro["signal"].map(lambda s: SIGNAL_COLORS.get(s, "—"))
-
-            df_display = df_macro[["name_fr", "value", "previous_value", "Tendance", "Signal", "unit", "source", "date"]]
-            df_display = df_display.copy()
-            df_display.columns = ["Indicateur", "Valeur", "Precedente", "Tendance", "Signal", "Unite", "Source", "Date"]
-
-            st.dataframe(
-                df_display.style.format({
-                    "Valeur": lambda v: f"{v:.2f}" if pd.notna(v) else "—",
-                    "Precedente": lambda v: f"{v:.2f}" if pd.notna(v) else "—",
-                }),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        # --- Failed indicators ---
-        failed = [ind for ind in macro_data["indicators"] if ind.get("error") is not None]
-        if failed:
-            with st.expander(f"{len(failed)} indicateur(s) indisponible(s)"):
-                for ind in failed:
-                    st.text(f"{ind['name_fr']}: {ind['error']}")
+        _render_macro_outlook(macro_data)
+        st.divider()
+        _render_mega_trends(macro_data)
+        st.divider()
+        _render_investment_plans(macro_data)
+        st.divider()
+        _render_sell_side_views(macro_data)
+        st.divider()
+        _render_lyn_alden(macro_data)
+        st.divider()
+        _render_indicators(macro_data)
+        st.divider()
+        _render_sector_signals(macro_data)
 
 # === Tab 6: Allocation Cible ===============================================
 with tab_target:

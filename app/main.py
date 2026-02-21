@@ -160,7 +160,7 @@ def get_performance(period: str = "ALL"):
 
 @app.get("/macro")
 def get_macro(refresh: bool = False):
-    """Macro economic indicators and outlook."""
+    """Macro economic indicators, outlook, mega-trends, plans & insights."""
     result = compute_macro_outlook(force_refresh=refresh)
 
     return {
@@ -186,6 +186,61 @@ def get_macro(refresh: bool = False):
                 "error": ind.error,
             }
             for ind in result.indicators
+        ],
+        "mega_trends": [
+            {
+                "id": mt.id,
+                "name_fr": mt.name_fr,
+                "force": mt.force,
+                "change": mt.change,
+                "catalysts": mt.catalysts,
+                "etfs_sectoriels": mt.etfs_sectoriels,
+                "etfs_geo": mt.etfs_geo,
+                "etfs_thematiques": mt.etfs_thematiques,
+                "sectors": mt.sectors,
+            }
+            for mt in result.mega_trends
+        ],
+        "investment_plans": [
+            {
+                "name": p.name,
+                "amount": p.amount,
+                "status": p.status,
+                "status_detail": p.status_detail,
+                "change": p.change,
+                "sectors": p.sectors,
+                "region": p.region,
+            }
+            for p in result.investment_plans
+        ],
+        "sell_side_views": [
+            {
+                "source": sv.source,
+                "date": sv.date,
+                "forecasts": sv.forecasts,
+                "key_themes": sv.key_themes,
+                "risks": sv.risks,
+            }
+            for sv in result.sell_side_views
+        ],
+        "lyn_alden_insights": [
+            {
+                "filename": a.filename,
+                "date": a.date,
+                "title": a.title,
+                "key_points": a.key_points,
+                "portfolio_changes": a.portfolio_changes,
+            }
+            for a in result.lyn_alden_insights
+        ],
+        "sector_signals": [
+            {
+                "sector": s.sector,
+                "signal": s.signal,
+                "supporting_trends": s.supporting_trends,
+                "indicator_signals": s.indicator_signals,
+            }
+            for s in result.sector_signals
         ],
     }
 
