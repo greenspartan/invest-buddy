@@ -1102,8 +1102,8 @@ def _compute_macro_synthesis(
         ctx.append(f"Fed {d} ({fed.value}%)")
     bs = ind_by_key.get("fed_balance_sheet")
     if bs:
-        d = "en expansion" if bs.trend == "up" else ("en contraction" if bs.trend == "down" else "stable")
-        ctx.append(f"liquidite {d}")
+        d = "en expansion" if bs.trend == "up" else ("en contraction (QT)" if bs.trend == "down" else "stable")
+        ctx.append(f"bilan Fed {d}")
     vix = ind_by_key.get("vix")
     if vix:
         if vix.value < 15:
@@ -1155,9 +1155,9 @@ def _compute_macro_synthesis(
     dxy = ind_by_key.get("dxy")
     m_parts = []
     if gold:
-        m_parts.append(f"Or ${gold.value:,.0f}")
+        m_parts.append(f"Or {gold.value:,.0f} USD")
     if btc:
-        m_parts.append(f"BTC ${btc.value:,.0f}")
+        m_parts.append(f"BTC {btc.value:,.0f} USD")
     if dxy:
         d = "en baisse" if dxy.trend == "down" else ("en hausse" if dxy.trend == "up" else "stable")
         m_parts.append(f"Dollar {d} ({dxy.value:.1f})")
