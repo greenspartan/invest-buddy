@@ -383,7 +383,7 @@ allocation_themes:
     sectors: ["Energy", "Utilities"]
 
   - id: asie_pacifique
-    name_fr: "Asie/Pacifique"
+    name_fr: "Asie/Pacifique ex-Japon"
     type: "geo"
     supporting_mega_trends: ["chips_acts", "nearshoring"]
     sectors: []
