@@ -1,0 +1,14 @@
+# Allocation cible du portefeuille (en % du total)
+# La somme des poids doit etre egale a 100.
+# Ajuster les poids selon la vue macro et les convictions.
+
+target_allocations: [
+  {ticker: "IMAE.AS", name: "iShares MSCI Europe", weight_pct: 12.0},
+  {ticker: "DFNS.MI", name: "Global X Defence Tech", weight_pct: 25.0},
+  {ticker: "WDEF.L", name: "WisdomTree Global Defence", weight_pct: 12.0},
+  {ticker: "USPY.L", name: "iShares S&P 500 USD", weight_pct: 10.0},
+  {ticker: "SMH.L", name: "VanEck Semiconductor", weight_pct: 20.0},
+  {ticker: "EIMI.L", name: "iShares EM", weight_pct: 8.0},
+  {ticker: "XAID.L", name: "Xtrackers AI & Big Data", weight_pct: 8.0},
+  {ticker: "URNU.L", name: "Sprott Uranium", weight_pct: 5.0},
+]

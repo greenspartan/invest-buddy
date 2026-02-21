@@ -9,3 +9,4 @@ venv/
 *.db
 .DS_Store
 conversation-*
+macro_outlook.yaml

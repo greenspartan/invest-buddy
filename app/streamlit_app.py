@@ -8,6 +8,9 @@ API_URL = "http://localhost:8000/portfolio"
 HOLDINGS_URL = "http://localhost:8000/holdings/top"
 SECTORS_URL = "http://localhost:8000/sectors"
 PERFORMANCE_URL = "http://localhost:8000/performance"
+MACRO_URL = "http://localhost:8000/macro"
+TARGET_URL = "http://localhost:8000/target"
+DRIFT_URL = "http://localhost:8000/drift"
 
 st.set_page_config(page_title="Invest Buddy", layout="wide")
 st.title("Invest Buddy")
@@ -47,6 +50,27 @@ def fetch_performance(period: str):
     return resp.json()
 
 
+@st.cache_data(ttl=300)
+def fetch_macro(refresh: bool = False):
+    resp = requests.get(MACRO_URL, params={"refresh": refresh}, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
+@st.cache_data(ttl=300)
+def fetch_target():
+    resp = requests.get(TARGET_URL, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+@st.cache_data(ttl=300)
+def fetch_drift():
+    resp = requests.get(DRIFT_URL, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
 # ---------------------------------------------------------------------------
 # Load portfolio data (required for all tabs)
 # ---------------------------------------------------------------------------
@@ -77,8 +101,8 @@ st.divider()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_positions, tab_holdings, tab_sectors, tab_performance = st.tabs(
-    ["Positions", "Top 20 Holdings", "Secteurs", "Performance"]
+tab_positions, tab_holdings, tab_sectors, tab_performance, tab_macro, tab_target, tab_drift = st.tabs(
+    ["Positions", "Top 20 Holdings", "Secteurs", "Performance", "Macro", "Allocation Cible", "Rebalancement"]
 )
 
 # === Tab 1: Positions =====================================================
@@ -284,3 +308,187 @@ with tab_performance:
 
     elif perf_data:
         st.info("Aucune donnee de performance disponible pour cette periode.")
+
+# === Tab 5: Macro ==========================================================
+with tab_macro:
+
+    col_refresh, _ = st.columns([1, 5])
+    with col_refresh:
+        do_refresh = st.button("Rafraichir les donnees")
+
+    try:
+        if do_refresh:
+            fetch_macro.clear()
+        macro_data = fetch_macro(refresh=do_refresh)
+    except Exception as e:
+        st.warning(f"Impossible de recuperer les donnees macro: {e}")
+        macro_data = None
+
+    if macro_data:
+        # --- Outlook banner ---
+        outlook = macro_data["outlook"]
+        score = macro_data["score"]
+
+        OUTLOOK_CONFIG = {
+            "risk-on": {"label": "RISK-ON", "icon": "🟢"},
+            "moderate-risk-on": {"label": "RISK-ON MODERE", "icon": "🟡"},
+            "neutral": {"label": "NEUTRE", "icon": "⚪"},
+            "moderate-risk-off": {"label": "RISK-OFF MODERE", "icon": "🟠"},
+            "risk-off": {"label": "RISK-OFF", "icon": "🔴"},
+        }
+        cfg = OUTLOOK_CONFIG.get(outlook, OUTLOOK_CONFIG["neutral"])
+
+        st.markdown(f"### {cfg['icon']} Outlook: **{cfg['label']}** (score: {score:+.3f})")
+
+        st.caption(
+            f"Sources actives: {', '.join(macro_data['sources_available'])}. "
+            f"Echec: {', '.join(macro_data['sources_failed']) or 'aucun'}. "
+            f"Derniere MAJ: {macro_data['last_updated']}"
+        )
+
+        # --- Themes (from Lyn Alden, if populated) ---
+        if macro_data.get("themes"):
+            st.subheader("Themes macro")
+            for theme in macro_data["themes"]:
+                st.markdown(f"- {theme}")
+
+        # --- Indicators table ---
+        st.subheader("Indicateurs")
+
+        indicators_ok = [ind for ind in macro_data["indicators"] if ind.get("error") is None]
+        if indicators_ok:
+            df_macro = pd.DataFrame(indicators_ok)
+
+            TREND_ARROWS = {"up": "↑", "down": "↓", "flat": "→"}
+            SIGNAL_COLORS = {"bullish": "🟢", "bearish": "🔴", "neutral": "⚪"}
+
+            df_macro["Tendance"] = df_macro["trend"].map(lambda t: TREND_ARROWS.get(t, "—"))
+            df_macro["Signal"] = df_macro["signal"].map(lambda s: SIGNAL_COLORS.get(s, "—"))
+
+            df_display = df_macro[["name_fr", "value", "previous_value", "Tendance", "Signal", "unit", "source", "date"]]
+            df_display = df_display.copy()
+            df_display.columns = ["Indicateur", "Valeur", "Precedente", "Tendance", "Signal", "Unite", "Source", "Date"]
+
+            st.dataframe(
+                df_display.style.format({
+                    "Valeur": lambda v: f"{v:.2f}" if pd.notna(v) else "—",
+                    "Precedente": lambda v: f"{v:.2f}" if pd.notna(v) else "—",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        # --- Failed indicators ---
+        failed = [ind for ind in macro_data["indicators"] if ind.get("error") is not None]
+        if failed:
+            with st.expander(f"{len(failed)} indicateur(s) indisponible(s)"):
+                for ind in failed:
+                    st.text(f"{ind['name_fr']}: {ind['error']}")
+
+# === Tab 6: Allocation Cible ===============================================
+with tab_target:
+
+    try:
+        target_data = fetch_target()
+    except Exception as e:
+        st.warning(f"Impossible de recuperer l'allocation cible: {e}")
+        target_data = None
+
+    if target_data and target_data["allocations"]:
+        total_w = target_data["total_weight_pct"]
+        if abs(total_w - 100.0) > 0.01:
+            st.warning(f"La somme des poids est de {total_w:.1f}% (devrait etre 100%)")
+
+        df_target = pd.DataFrame(target_data["allocations"])
+        df_target.columns = ["Ticker", "Nom", "Poids cible (%)"]
+
+        st.dataframe(
+            df_target.style.format({"Poids cible (%)": "{:.1f}%"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # Pie chart (same style as sectors tab)
+        fig_target = px.pie(
+            df_target,
+            names="Nom",
+            values="Poids cible (%)",
+            hole=0.4,
+        )
+        fig_target.update_traces(
+            sort=False,
+            textinfo="label+percent",
+            textposition="outside",
+            pull=[0.03] * len(df_target),
+            hovertemplate="<b>%{label}</b><br>Poids: %{value:.1f}%<extra></extra>",
+        )
+        fig_target.update_layout(
+            height=650,
+            legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+            margin=dict(t=40, b=120, l=40, r=40),
+        )
+        st.plotly_chart(fig_target, use_container_width=True)
+
+    elif target_data:
+        st.info("Aucune allocation cible definie. Editez target_portfolio.yaml.")
+
+# === Tab 7: Rebalancement ==================================================
+with tab_drift:
+
+    try:
+        drift_data = fetch_drift()
+    except Exception as e:
+        st.warning(f"Impossible de recuperer le drift: {e}")
+        drift_data = None
+
+    if drift_data and drift_data["entries"]:
+        st.caption(
+            f"Valeur totale du portefeuille: {drift_data['total_portfolio_eur']:,.2f} EUR. "
+            f"Drift max: {drift_data['max_drift_pct']:.2f}%"
+        )
+
+        df_drift = pd.DataFrame(drift_data["entries"])
+        df_drift = df_drift[["ticker", "name", "target_pct", "current_pct", "drift_pct", "action",
+                              "current_value_eur", "target_value_eur", "rebalance_amount_eur"]]
+        df_drift.columns = ["Ticker", "Nom", "Cible (%)", "Actuel (%)", "Drift (%)", "Action",
+                             "Valeur actuelle (EUR)", "Valeur cible (EUR)", "Rebalancement (EUR)"]
+
+        def _color_action(val):
+            if val == "BUY":
+                return "background-color: rgba(46, 204, 113, 0.2); color: green"
+            elif val == "SELL":
+                return "background-color: rgba(231, 76, 60, 0.2); color: red"
+            return ""
+
+        st.dataframe(
+            df_drift.style.format({
+                "Cible (%)": "{:.1f}%",
+                "Actuel (%)": "{:.1f}%",
+                "Drift (%)": "{:+.2f}%",
+                "Valeur actuelle (EUR)": "{:,.2f} \u20ac",
+                "Valeur cible (EUR)": "{:,.2f} \u20ac",
+                "Rebalancement (EUR)": "{:+,.2f} \u20ac",
+            }).map(
+                lambda v: "color: red" if isinstance(v, (int, float)) and v > 2
+                else ("color: orange" if isinstance(v, (int, float)) and v < -2 else ""),
+                subset=["Drift (%)"],
+            ).map(_color_action, subset=["Action"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        # Summary of actions needed
+        actions = [e for e in drift_data["entries"] if e["action"] != "HOLD"]
+        if actions:
+            st.subheader("Actions de rebalancement suggerees")
+            for entry in actions:
+                sign = "+" if entry["rebalance_amount_eur"] > 0 else ""
+                st.markdown(
+                    f"- **{entry['action']}** {entry['ticker']} ({entry['name']}): "
+                    f"{sign}{entry['rebalance_amount_eur']:,.2f} EUR"
+                )
+        else:
+            st.success("Portefeuille aligne avec l'allocation cible. Aucune action necessaire.")
+
+    elif drift_data:
+        st.info("Aucune allocation cible definie. Editez target_portfolio.yaml d'abord.")

@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.database import init_db, get_db
 from app.holdings import compute_top_holdings
+from app.macro import compute_macro_outlook
 from app.performance import compute_performance, PERIODS
 from app.sectors import compute_sector_exposure
+from app.target import load_target_portfolio, compute_drift
 from app.models import Position
 from app.portfolio import load_portfolio, load_transactions, aggregate_positions, enrich_positions
 
@@ -153,6 +155,83 @@ def get_performance(period: str = "ALL"):
             }
             for d in result.daily
         ],
+    }
+
+
+@app.get("/macro")
+def get_macro(refresh: bool = False):
+    """Macro economic indicators and outlook."""
+    result = compute_macro_outlook(force_refresh=refresh)
+
+    return {
+        "outlook": result.outlook,
+        "score": result.score,
+        "last_updated": result.last_updated,
+        "sources_available": result.sources_available,
+        "sources_failed": result.sources_failed,
+        "themes": result.themes,
+        "indicators": [
+            {
+                "key": ind.key,
+                "name": ind.name,
+                "name_fr": ind.name_fr,
+                "source": ind.source,
+                "category": ind.category,
+                "unit": ind.unit,
+                "value": ind.value,
+                "previous_value": ind.previous_value,
+                "date": ind.date,
+                "trend": ind.trend,
+                "signal": ind.signal,
+                "error": ind.error,
+            }
+            for ind in result.indicators
+        ],
+    }
+
+
+@app.get("/target")
+def get_target():
+    """Target portfolio allocations."""
+    result = load_target_portfolio()
+    return {
+        "allocations": [
+            {
+                "ticker": a.ticker,
+                "name": a.name,
+                "weight_pct": a.weight_pct,
+            }
+            for a in result.allocations
+        ],
+        "total_weight_pct": result.total_weight_pct,
+    }
+
+
+@app.get("/drift")
+def get_drift():
+    """Portfolio drift vs target allocations."""
+    aggregated = _load_aggregated()
+    enriched = enrich_positions(aggregated)
+    target = load_target_portfolio()
+    result = compute_drift(enriched, target)
+
+    return {
+        "entries": [
+            {
+                "ticker": e.ticker,
+                "name": e.name,
+                "target_pct": e.target_pct,
+                "current_pct": e.current_pct,
+                "drift_pct": e.drift_pct,
+                "action": e.action,
+                "current_value_eur": e.current_value_eur,
+                "target_value_eur": e.target_value_eur,
+                "rebalance_amount_eur": e.rebalance_amount_eur,
+            }
+            for e in result.entries
+        ],
+        "total_portfolio_eur": result.total_portfolio_eur,
+        "max_drift_pct": result.max_drift_pct,
     }
 
 

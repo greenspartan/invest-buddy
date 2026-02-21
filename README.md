@@ -13,9 +13,11 @@ portfolio.yaml          Tu definis tes positions initiales ici (tickers, quantit
 transactions.yaml       Tu ajoutes tes achats ulterieurs ici (optionnel)
        |
        v
-  FastAPI (backend)     Lit les 2 YAML, agrege les lots, calcule le PRU,
+  FastAPI (backend)     Lit les YAML, agrege les lots, calcule le PRU,
        |                recupere les prix live via Yahoo Finance,
-       |                calcule les P&L, stocke en base de donnees
+       |                calcule les P&L, stocke en base de donnees,
+       |                fetch les indicateurs macro (FRED, ECB, yfinance),
+       |                calcule le drift vs allocation cible
        |
        v
   PostgreSQL (DB)       Stocke les positions enrichies (sert de cache)
@@ -34,6 +36,9 @@ transactions.yaml       Tu ajoutes tes achats ulterieurs ici (optionnel)
 | **yfinance** | Une librairie Python qui se connecte a Yahoo Finance | Recupere les prix actuels de tes ETFs automatiquement |
 | **PostgreSQL** | Une base de donnees relationnelle | Stocke les positions enrichies (prix actuel, P&L). Tourne dans un container Docker |
 | **Docker** | Un outil qui lance des applications dans des containers isoles | Permet de lancer PostgreSQL sans l'installer sur ton Mac. Un container = une mini-machine virtuelle legere |
+| **target_portfolio.yaml** | Un fichier texte structure | Ton allocation cible : les poids (%) souhaites pour chaque ETF. Editable a la main |
+| **FRED API** | API de la Federal Reserve | Fournit les indicateurs macro US (CPI, chomage, taux Fed). Cle API gratuite requise |
+| **ECB Data Portal** | API de la Banque Centrale Europeenne | Fournit les indicateurs macro EU (taux refi BCE, CPI zone euro) |
 | **Streamlit** | Un framework Python pour creer des dashboards web | Affiche tes positions, P&L et totaux dans une page web. Mode lecture seule |
 | **Swagger UI** | Interface web auto-generee par FastAPI | Accessible sur `/docs`, permet de voir et tester tous les endpoints de l'API directement dans le navigateur. Utile pour le debug et la documentation |
 
@@ -79,12 +84,15 @@ transactions.yaml       Tu ajoutes tes achats ulterieurs ici (optionnel)
 │   ├── holdings.py        # Fetch des top holdings ETF + calcul des poids effectifs
 │   ├── sectors.py         # Fetch des secteurs ETF + calcul de l'exposition sectorielle
 │   ├── performance.py    # Historique de performance du portefeuille (P&L, drawdown)
+│   ├── macro.py           # Indicateurs macro (FRED, ECB, yfinance) + scoring risk-on/risk-off
+│   ├── target.py          # Allocation cible + calcul drift vs portefeuille live
 │   ├── forex.py           # Taux de change via yfinance (cache en memoire)
 │   ├── models.py          # Modele de la table "positions" en base (SQLAlchemy ORM)
 │   ├── database.py        # Connexion a PostgreSQL
 │   └── config.py          # Configuration (lit le fichier .env)
 ├── portfolio.yaml         # Tes positions initiales (a personnaliser)
 ├── transactions.yaml      # Achats additionnels (optionnel)
+├── target_portfolio.yaml  # Allocation cible du portefeuille (poids % par ETF)
 ├── docker-compose.yml     # Configuration du container PostgreSQL
 ├── requirements.txt       # Dependances Python
 ├── .env                   # Variables d'environnement (URL de la DB, etc.)
@@ -173,6 +181,9 @@ URLs disponibles :
 - **http://127.0.0.1:8000/holdings/top** — Top 20 positions sous-jacentes
 - **http://127.0.0.1:8000/sectors** — Exposition sectorielle du portefeuille
 - **http://127.0.0.1:8000/performance?period=ALL** — Performance historique du portefeuille
+- **http://127.0.0.1:8000/macro** — Indicateurs macro + outlook
+- **http://127.0.0.1:8000/target** — Allocation cible
+- **http://127.0.0.1:8000/drift** — Drift vs allocation cible
 - **http://127.0.0.1:8000/docs** — Documentation interactive Swagger UI
 - **http://127.0.0.1:8000/redoc** — Documentation alternative (ReDoc)
 
@@ -195,6 +206,9 @@ streamlit run app/streamlit_app.py
 | GET | `/holdings/top` | Top 20 positions sous-jacentes du portefeuille (poids effectifs agreges) |
 | GET | `/sectors` | Exposition sectorielle du portefeuille (poids effectifs agreges par secteur GICS) |
 | GET | `/performance?period=ALL` | Performance historique du portefeuille (P&L % et drawdown). Periodes : 1M, 3M, 6M, 1Y, YTD, ALL |
+| GET | `/macro?refresh=false` | Indicateurs macro + outlook risk-on/risk-off (cache YAML 6h, `refresh=true` force re-fetch) |
+| GET | `/target` | Allocation cible depuis `target_portfolio.yaml` |
+| GET | `/drift` | Drift portefeuille live vs allocation cible + suggestions de rebalancement |
 | GET | `/health` | Health check (`{"status": "ok"}`) |
 | GET | `/docs` | Documentation Swagger UI (interface de test) |
 | GET | `/redoc` | Documentation ReDoc (lecture seule) |
@@ -289,6 +303,73 @@ streamlit run app/streamlit_app.py
 
 > **Periodes disponibles** : `1M` (1 mois), `3M`, `6M`, `1Y` (1 an), `YTD` (depuis janvier), `ALL` (depuis la date d'achat la plus ancienne).
 
+### Exemple de reponse `/macro`
+
+```json
+{
+  "outlook": "moderate-risk-on",
+  "score": 0.275,
+  "last_updated": "2026-02-21T14:30:00",
+  "sources_available": ["FRED", "ECB", "yfinance"],
+  "sources_failed": [],
+  "themes": [],
+  "indicators": [
+    {
+      "key": "us_cpi",
+      "name": "US CPI (All Items YoY)",
+      "name_fr": "IPC US (tous postes, GA)",
+      "source": "FRED",
+      "category": "inflation",
+      "unit": "%",
+      "value": 2.8,
+      "previous_value": 3.1,
+      "date": "2026-01-01",
+      "trend": "down",
+      "signal": "bullish",
+      "error": null
+    }
+  ]
+}
+```
+
+> **Sources macro** : FRED API (CPI, chomage, Fed Funds, ISM), ECB Data Portal (taux refi, HICP), yfinance (US 10Y, VIX, EUR/USD). Le cache YAML est valide 6 heures. `?refresh=true` force un re-fetch.
+
+### Exemple de reponse `/target`
+
+```json
+{
+  "allocations": [
+    {"ticker": "DFNS.MI", "name": "Global X Defence Tech", "weight_pct": 25.0},
+    {"ticker": "SMH.L", "name": "VanEck Semiconductor", "weight_pct": 20.0}
+  ],
+  "total_weight_pct": 100.0
+}
+```
+
+### Exemple de reponse `/drift`
+
+```json
+{
+  "entries": [
+    {
+      "ticker": "DFNS.MI",
+      "name": "Global X Defence Tech",
+      "target_pct": 25.0,
+      "current_pct": 28.5,
+      "drift_pct": 3.5,
+      "action": "SELL",
+      "current_value_eur": 1025.25,
+      "target_value_eur": 900.0,
+      "rebalance_amount_eur": -125.25
+    }
+  ],
+  "total_portfolio_eur": 3600.0,
+  "max_drift_pct": 3.5
+}
+```
+
+> **Seuil de drift** : ±2%. En dessous, l'action est HOLD. Au-dessus, BUY ou SELL selon le sens.
+
 ---
 
 ## Commandes utiles
@@ -304,6 +385,14 @@ streamlit run app/streamlit_app.py
 
 ---
 
+## Variables d'environnement (.env)
+
+| Variable | Description | Requis |
+| ---------- | ----------- | ------ |
+| `DATABASE_URL` | URL de connexion PostgreSQL | Oui |
+| `PORTFOLIO_PATH` | Chemin vers portfolio.yaml | Non (defaut: `portfolio.yaml`) |
+| `FRED_API_KEY` | Cle API FRED gratuite ([obtenir une cle](https://fred.stlouisfed.org/docs/api/api_key.html)) | Non (macro fonctionne sans, avec yfinance + ECB seulement) |
+
 ## Roadmap
 
 - [ ] Integration IBKR (positions temps reel depuis le broker)
@@ -312,3 +401,5 @@ streamlit run app/streamlit_app.py
 - [x] Transactions et calcul PRU automatique
 - [ ] Alertes de prix (notification si un ETF passe un seuil)
 - [x] Graphique d'exposition sectorielle (camembert)
+- [x] Dashboard macro (indicateurs FRED, ECB, yfinance + scoring risk-on/risk-off)
+- [x] Allocation cible + drift / rebalancement
